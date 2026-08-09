@@ -29,10 +29,13 @@ export default function PeopleScreen() {
           style={[styles.search, { color: theme.text, backgroundColor: theme.backgroundElement }]}
         />
         <Link href="/person/new" asChild>
+          {/* Flattened, not an array: `asChild` clones this into expo-router's <Slot>, which
+              rejects an array style at runtime. The two list rows below get away with a bare
+              `styles.row` because a single registered style is not an array. */}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add a person"
-            style={[styles.add, { backgroundColor: theme.backgroundSelected }]}
+            style={StyleSheet.flatten([styles.add, { backgroundColor: theme.backgroundSelected }])}
           >
             <ThemedText type="subtitle">+</ThemedText>
           </Pressable>
