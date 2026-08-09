@@ -4,12 +4,12 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Node 24 to match the dev machine, and specifically to get npm 11. npm writes one of
       # vitest's nested esbuild platform binaries into the lockfile without `optional: true`;
       # npm 10 then treats an AIX-only binary as a hard requirement and `npm ci` dies with
       # EBADPLATFORM on linux. A lockfile is only a guarantee against the npm that wrote it.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with: { node-version: 24, cache: npm }
       - run: npm ci
       - run: npm run check
