@@ -7,6 +7,22 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
+/**
+ * `tint` is 藍 (ai), the indigo from caioalfonso.dev's design system, converted from its
+ * OKLCH source: light `oklch(0.42 0.09 252)`, dark `oklch(0.62 0.10 250)`. React Native
+ * cannot parse `oklch()`, so these are the exact sRGB conversions, not eyeballed hex.
+ *
+ * Every pair below is measured, because the greys alone could not carry selection state:
+ * `backgroundSelected` against `background` is only 1.31:1 in light mode, which reads as
+ * "nothing is selected".
+ *
+ *   tint on background   light 8.45:1   dark 5.78:1
+ *   onTint on tint       light 8.45:1   dark 5.78:1
+ *   danger on background light 6.54:1   dark 12.30:1
+ *
+ * `onTint` is black in dark mode on purpose: white on the lighter indigo is 3.63:1 and
+ * fails AA. The rule is to pick the label colour that passes, not the one that looks tidy.
+ */
 export const Colors = {
   light: {
     text: '#000000',
@@ -14,6 +30,9 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    tint: '#244f7c',
+    onTint: '#ffffff',
+    danger: '#b3261e',
   },
   dark: {
     text: '#ffffff',
@@ -21,6 +40,9 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    tint: '#558ac0',
+    onTint: '#000000',
+    danger: '#f2b8b5',
   },
 } as const;
 

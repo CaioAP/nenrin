@@ -85,12 +85,11 @@ export function PersonForm({
           disabled={saving}
           accessibilityRole="button"
           accessibilityState={{ disabled: saving }}
-          style={[
-            styles.submit,
-            { backgroundColor: theme.backgroundSelected, opacity: saving ? 0.6 : 1 },
-          ]}
+          style={[styles.submit, { backgroundColor: theme.tint, opacity: saving ? 0.6 : 1 }]}
         >
-          <ThemedText type="smallBold">{saving ? 'Saving…' : submitLabel}</ThemedText>
+          <ThemedText type="smallBold" themeColor="onTint">
+            {saving ? 'Saving…' : submitLabel}
+          </ThemedText>
         </Pressable>
       </ScrollView>
     </ThemedView>
@@ -100,9 +99,10 @@ export function PersonForm({
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
   // Marked as an alert so a screen reader announces it rather than leaving the user to
-  // discover a red line they cannot see.
+  // discover a red line they cannot see. The colour is themed rather than a fixed red,
+  // because a single red that passes AA on white is 3.86:1 on black.
   return (
-    <ThemedText type="small" accessibilityRole="alert" style={styles.error}>
+    <ThemedText type="small" accessibilityRole="alert" themeColor="danger">
       {message}
     </ThemedText>
   );
@@ -126,5 +126,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  error: { color: '#c0392b' },
 });

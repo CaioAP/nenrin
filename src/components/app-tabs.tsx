@@ -13,7 +13,9 @@ export default function AppTabs() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.text,
+        // The accent, not `text`: active vs inactive was two greys, which is not a
+        // difference you can see at tab-bar size.
+        tabBarActiveTintColor: colors.tint,
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: { backgroundColor: colors.background },
         headerStyle: { backgroundColor: colors.background },

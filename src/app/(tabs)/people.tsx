@@ -35,9 +35,11 @@ export default function PeopleScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add a person"
-            style={StyleSheet.flatten([styles.add, { backgroundColor: theme.backgroundSelected }])}
+            style={StyleSheet.flatten([styles.add, { backgroundColor: theme.tint }])}
           >
-            <ThemedText type="subtitle">+</ThemedText>
+            <ThemedText type="subtitle" themeColor="onTint">
+              +
+            </ThemedText>
           </Pressable>
         </Link>
       </View>

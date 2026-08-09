@@ -110,12 +110,11 @@ function Chip({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      style={[
-        styles.chip,
-        { backgroundColor: selected ? theme.backgroundSelected : theme.backgroundElement },
-      ]}
+      style={[styles.chip, { backgroundColor: selected ? theme.tint : theme.backgroundElement }]}
     >
-      <ThemedText type="small">{label}</ThemedText>
+      <ThemedText type="small" themeColor={selected ? 'onTint' : 'text'}>
+        {label}
+      </ThemedText>
     </Pressable>
   );
 }

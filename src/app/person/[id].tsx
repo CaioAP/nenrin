@@ -73,7 +73,7 @@ export default function PersonScreen() {
       <PersonForm draft={draft} onChange={setDraft} onSubmit={save} submitLabel="Save changes" />
       <ThemedView style={styles.footer}>
         <Pressable onPress={confirmDelete} accessibilityRole="button" style={styles.remove}>
-          <ThemedText type="small" style={styles.removeText}>
+          <ThemedText type="small" themeColor="danger">
             Remove {person.displayName}
           </ThemedText>
         </Pressable>
@@ -96,7 +96,6 @@ function Centred({ title, body }: { title: string; body: string }) {
 const styles = StyleSheet.create({
   footer: { padding: Spacing.three },
   remove: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  removeText: { color: '#c0392b' },
   centred: {
     flex: 1,
     alignItems: 'center',
