@@ -59,6 +59,28 @@ ask-link. Anything that does not reduce entry cost is a side feature.
 - **After changing `src/db/schema.ts`, run `npm run db:generate`.** The app applies the
   generated bundle, not the schema file, so a schema change alone does nothing at runtime.
 
+## Web is not a supported target
+
+`npm run web` does not work, and making it work is not a small config change. Investigated
+and abandoned deliberately — three separate blockers, in the order you hit them:
+
+1. `expo-sqlite`'s web build imports its own `wa-sqlite.wasm`, but SDK 57's default Metro
+   config lists `wasm` in neither `assetExts` nor `sourceExts`. Fixable with
+   `config.resolver.assetExts.push('wasm')`.
+2. wa-sqlite then needs `SharedArrayBuffer`, so the page must be cross-origin isolated.
+   Fixable by sending `Cross-Origin-Opener-Policy: same-origin` and
+   `Cross-Origin-Embedder-Policy: require-corp` from the dev server.
+3. **The blocker.** `openDatabaseSync` runs at module scope in `src/db/client.ts`. On web
+   that blocks the main thread waiting on a worker that cannot reply, because the main
+   thread is blocked — `Error: Sync operation timeout`. Fixing it means making the database
+   handle async and restructuring every consumer.
+
+(3) is a real change to core code in exchange for a platform the product does not ship to,
+so the app stays native-only. Do not add the two Metro workarounds on their own: they get
+further without ever reaching a working app.
+
+Use Expo Go or a dev build instead.
+
 ## Verifying
 
 `npm run check`, `npm run lint` and `npm test` cover the pure layers. They do **not** prove
