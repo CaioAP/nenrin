@@ -1,3 +1,84 @@
-# Expo HAS CHANGED
+# Nenrin
 
-Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code.
+A birthday keeper. Stores the birthdays of everyone you know, reminds you before the day,
+helps you write the message, exports to your calendar. React Native + Expo, local-first.
+
+**Read `docs/00-design.md` before making design decisions.** It records *why* the app is
+shaped this way — most of what follows is a consequence of it.
+
+## Expo has changed
+
+Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any
+Expo code. Do not write Expo APIs from memory.
+
+## The one idea
+
+Storage and reminders are a solved, crowded category. **The product is the data-acquisition
+funnel** — getting 150 birthdays in without 150 manual entries. Rank work by
+cost-per-birthday-acquired: contacts import, calendar import, the triage deck, then (v2) the
+ask-link. Anything that does not reduce entry cost is a side feature.
+
+## Architecture rules
+
+- **`src/domain/` imports nothing from Expo, React Native, or the database.** Dates,
+  recurrence, scheduling and message rendering are pure functions over plain objects, tested
+  in plain Node. If a change to `src/domain/` needs a simulator to verify, it is in the wrong
+  file.
+- **Platform access lives behind an adapter** in `src/sources/`, all implementing the same
+  `BirthdaySource` interface. Adding a source is one new file.
+- **Every database write goes through a repository function in `src/db/`.** No screen touches
+  the database directly — v2 hooks automatic backup into that one place.
+
+## Non-obvious constraints
+
+- **Birthdays usually have no year.** `PartialDate.year` is nullable and age is
+  `number | null` everywhere. Never render an age without handling null — `messagesFor()`
+  drops age-dependent templates rather than printing "Turning null!".
+- **Never schedule one notification per person.** The OS caps pending local notifications
+  (iOS commonly cited at 64). `armWindow()` arms only the soonest ~40 and is re-armed on
+  every foreground. This fails silently, not loudly — it is the most likely source of a
+  "notifications stopped working" report.
+- **Every `fireAt` returned by `armWindow()` is strictly later than `from`.** Scheduling into
+  the past either fires instantly or is dropped by the OS.
+- **All date arithmetic is local-calendar arithmetic.** A birthday is a calendar day, not an
+  instant. Nothing in `src/domain/` touches UTC.
+- **Tests pin `TZ=Europe/London`** (see the npm scripts). The dev machine is in São Paulo,
+  which has had no DST since 2019 — run the daylight-saving tests there and they pass
+  without ever crossing a transition.
+- **Leap-day birthdays are real.** 29 February is storable, and `LeapDayPolicy` decides where
+  it lands in a common year. The real behaviour of a `YEARLY` notification trigger on
+  29 February is **unverified on device** — see the plan's verification section.
+- **Contacts access can be partial.** iOS 18 limited access means the user picks individual
+  contacts, so import can never promise "one tap, all your contacts". The app must also be
+  fully usable with contacts permission *denied*.
+- **Migrations need `metro.config.js` *and* `babel.config.js`, both.** `./drizzle/migrations.js`
+  imports each migration as a `.sql` file. Metro must resolve the extension
+  (`sourceExts.push('sql')`) *and* `babel-plugin-inline-import` must inline it as a string —
+  with only the first, Babel receives the file as source and dies on
+  `SyntaxError: Missing semicolon` at `CREATE TABLE`. Neither file is in the Expo template.
+- **After changing `src/db/schema.ts`, run `npm run db:generate`.** The app applies the
+  generated bundle, not the schema file, so a schema change alone does nothing at runtime.
+
+## Verifying
+
+`npm run check`, `npm run lint` and `npm test` cover the pure layers. They do **not** prove
+the app bundles — imports that only Metro resolves (the `.sql` migrations above) pass all
+three and still fail at runtime. Bundle it too:
+
+```bash
+npx expo export --platform android --output-dir /tmp/nenrin-export
+```
+
+## Commands
+
+```bash
+npm start            # expo start
+npm run check        # tsc --noEmit
+npm run lint         # biome check .
+npm run lint:fix     # biome check --write .
+npm test             # vitest, TZ-pinned
+npm run db:generate  # drizzle-kit generate
+```
+
+Biome owns formatting and linting — there is deliberately no ESLint or Prettier, and
+`expo lint` is not wired up.
