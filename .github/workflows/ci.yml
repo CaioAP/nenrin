@@ -1,0 +1,31 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run check
+      - run: npm run lint
+      - run: npm run test
+
+      # Catches a schema change committed without regenerating the migrations. The app
+      # applies the generated bundle, never src/db/schema.ts, so drift here means the
+      # running app queries tables that were never created — and every other gate passes.
+      - name: Migrations match the schema
+        run: |
+          npm run db:generate
+          if [ -n "$(git status --porcelain drizzle)" ]; then
+            echo "::error::src/db/schema.ts changed without running 'npm run db:generate'."
+            git status --porcelain drizzle
+            git diff -- drizzle
+            exit 1
+          fi
+
+      # Not redundant with the checks above. Imports that only Metro resolves — notably the
+      # .sql migrations, which need both metro.config.js and babel.config.js — pass
+      # typecheck, lint and tests and still fail to bundle.
+      - run: npm run build

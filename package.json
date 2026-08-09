@@ -53,7 +53,8 @@
     "lint:fix": "biome check --write .",
     "test": "TZ=Europe/London vitest run",
     "test:watch": "TZ=Europe/London vitest",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "build": "expo export --platform android --output-dir dist"
   },
   "private": true
 }
