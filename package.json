@@ -56,5 +56,8 @@
     "db:generate": "drizzle-kit generate",
     "build": "expo export --platform android --output-dir dist"
   },
-  "private": true
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  }
 }
