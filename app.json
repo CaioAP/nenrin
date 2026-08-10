@@ -35,11 +35,24 @@
           "imageWidth": 76
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "color": "#244f7c"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4e6b795b-cfab-4d97-ba27-655b00165c75"
+      }
+    },
+    "owner": "caioalfonso"
   }
 }

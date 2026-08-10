@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { isValidMonthDay } from '@/domain/birthday';
 import { MONTH_NAMES } from '@/domain/format';
 import { useTheme } from '@/hooks/use-theme';
+import { Chip } from './chip';
 import { ThemedText } from './themed-text';
 
 export type BirthdayDraft = {
@@ -94,31 +95,6 @@ export function BirthdayFields({
   );
 }
 
-function Chip({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      style={[styles.chip, { backgroundColor: selected ? theme.tint : theme.backgroundElement }]}
-    >
-      <ThemedText type="small" themeColor={selected ? 'onTint' : 'text'}>
-        {label}
-      </ThemedText>
-    </Pressable>
-  );
-}
-
 const monthLength = (month: number) => [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
 
 const styles = StyleSheet.create({
@@ -128,15 +104,6 @@ const styles = StyleSheet.create({
   row: {
     gap: Spacing.two,
     paddingVertical: Spacing.one,
-  },
-  chip: {
-    // 44pt minimum touch target — anything smaller is unusable while scrolling a long row.
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.three,
-    borderRadius: 4,
   },
   input: {
     minHeight: 44,

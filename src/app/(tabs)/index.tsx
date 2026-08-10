@@ -8,18 +8,17 @@ import { Spacing } from '@/constants/theme';
 import { usePeople } from '@/db/hooks';
 import { formatOccursOn, formatTurningAge } from '@/domain/format';
 import { describeDaysAway, type UpcomingEntry, upcoming } from '@/domain/upcoming';
+import { useForegroundTime } from '@/hooks/use-foreground-time';
 
 export default function UpcomingScreen() {
   const { people, loading, error } = usePeople();
+  const foregroundAt = useForegroundTime();
 
-  // `new Date()` is read once per render rather than inside the sort, so every row in a
-  // single list agrees on what "today" is.
-  //
-  // Known limitation: the memo is keyed on `people`, so a list left open across midnight
-  // keeps saying "Tomorrow" for a birthday that is now today. Re-running on app foreground
-  // fixes it, and is worth doing when the notification re-arming lands — the two want the
-  // same trigger.
-  const entries = useMemo(() => upcoming(people, new Date()), [people]);
+  // "Today" is the day the app was last opened, not the instant of this render. One shared
+  // value keeps every row in a single list agreeing about what today is, and it is the only
+  // thing that changes when a day passes — without it a list left open across midnight goes
+  // on saying "Tomorrow" for a birthday that is now today.
+  const entries = useMemo(() => upcoming(people, foregroundAt), [people, foregroundAt]);
 
   if (error) return <Message title="Something went wrong" body={error.message} />;
   if (loading) return null;

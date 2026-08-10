@@ -28,10 +28,29 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 export const LEAD_DAY_CHOICES = [0, 1, 3, 7] as const;
 
+/**
+ * The times a reminder may fire at.
+ *
+ * A fixed set rather than a time picker. The only question worth asking is roughly when in
+ * the day you want to be told, and a picker trades a one-tap answer for a scroll wheel and
+ * a platform-specific modal — for a preference almost nobody revisits.
+ */
+export const NOTIFY_TIME_CHOICES = [7, 8, 9, 12, 18, 20] as const;
+
 /** Label for a lead time, for settings and per-person overrides. */
 export function describeLeadDays(days: number): string {
   if (days === 0) return 'On the day';
   if (days === 1) return '1 day before';
   if (days === 7) return '1 week before';
   return `${days} days before`;
+}
+
+/** "09:00". 24-hour, because the app is English-only and the label must not wrap on a chip. */
+export function formatTimeOfDay(hour: number, minute: number): string {
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+/** Label for a leap-day policy, phrased as what actually happens rather than as the token. */
+export function describeLeapDayPolicy(policy: LeapDayPolicy): string {
+  return policy === 'feb28' ? '28 February' : '1 March';
 }

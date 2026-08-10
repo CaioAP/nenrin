@@ -15,9 +15,10 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useMemo } from 'react';
 
 import type { Person } from '@/domain/person';
+import type { AppSettings } from '@/domain/settings';
 import { db } from './client';
-import { toPeople } from './mappers';
-import { person } from './schema';
+import { toPeople, toSettings } from './mappers';
+import { person, settings } from './schema';
 
 /** Everyone, alphabetically, kept live. */
 export function usePeople(): { people: Person[]; error: Error | undefined; loading: boolean } {
@@ -50,4 +51,17 @@ export function usePerson(id: string): {
   const found = useMemo(() => toPeople(data ?? [])[0] ?? null, [data]);
 
   return { person: found, error, loading: updatedAt === undefined && error === undefined };
+}
+
+/**
+ * App settings, kept live.
+ *
+ * No `loading` flag: an unwritten settings row *is* the defaults, so there is no moment
+ * where the answer is unknown. Callers get a usable `AppSettings` on the very first render,
+ * which is what lets the reminder window arm without waiting for a round trip.
+ */
+export function useSettings(): { settings: AppSettings; error: Error | undefined } {
+  const { data, error } = useLiveQuery(db.select().from(settings).limit(1));
+
+  return { settings: useMemo(() => toSettings(data?.[0]), [data]), error };
 }

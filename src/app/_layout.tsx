@@ -6,6 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { db, migrations } from '@/db/client';
+import { useReminders } from '@/notifications/use-reminders';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -25,8 +26,13 @@ export default function RootLayout() {
  *
  * The add and edit screens push over the tab bar. With `Tabs` at the root, every route file
  * outside the declared screens would silently become another tab.
+ *
+ * `useReminders` lives here rather than in the root component because it queries `person`
+ * and `settings`. Above this point the migrations may not have run yet.
  */
 function AppStack() {
+  useReminders();
+
   return (
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

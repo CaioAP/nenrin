@@ -46,8 +46,19 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   which has had no DST since 2019 — run the daylight-saving tests there and they pass
   without ever crossing a transition.
 - **Leap-day birthdays are real.** 29 February is storable, and `LeapDayPolicy` decides where
-  it lands in a common year. The real behaviour of a `YEARLY` notification trigger on
-  29 February is **unverified on device** — see the plan's verification section.
+  it lands in a common year. Notifications resolve this themselves — they use one-shot DATE
+  triggers on dates the domain already adjusted, so the OS is never asked what 29 February
+  means. **Calendar export has the same question still open**: a yearly `RRULE` on 29 February
+  may resolve to the 28th, the 1st, or never fire, and only a device can say which. Pin the
+  behaviour explicitly when step 8 lands rather than trusting the default.
+- **Notifications use DATE triggers, never YEARLY, and only cover a horizon.** A recurring
+  trigger cannot express what `armWindow` produces — lead time moves a reminder off the
+  birthday, a long lead clamps to the next slot, and a reminder with no useful moment left is
+  dropped. So the app arms concrete dates and re-arms them on every foreground and every
+  write. The cost: nothing re-arms while the app is closed, so a user who never opens Nenrin
+  eventually drains the window. Closing that gap needs a background task, which is knowingly
+  **not in v1** — it would add a dependency, a config plugin, and a second device-only
+  verification loop.
 - **Contacts access can be partial.** iOS 18 limited access means the user picks individual
   contacts, so import can never promise "one tap, all your contacts". The app must also be
   fully usable with contacts permission *denied*.

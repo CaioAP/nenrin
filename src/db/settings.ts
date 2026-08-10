@@ -8,27 +8,16 @@
 
 import { eq } from 'drizzle-orm';
 
-import type { LeapDayPolicy } from '@/domain/birthday';
-import { type AppSettings, DEFAULT_SETTINGS } from '@/domain/settings';
+import type { AppSettings } from '@/domain/settings';
 import { db } from './client';
+import { toSettings } from './mappers';
 import { settings } from './schema';
 
 const SETTINGS_ID = 1;
 
 export async function getSettings(): Promise<AppSettings> {
   const [row] = await db.select().from(settings).where(eq(settings.id, SETTINGS_ID)).limit(1);
-  if (!row) return DEFAULT_SETTINGS;
-
-  return {
-    defaultLeadDays: row.defaultLeadDays,
-    notifyHour: row.notifyHour,
-    notifyMinute: row.notifyMinute,
-    // The column is a plain TEXT, so a hand-edited database or a future sync could carry
-    // anything. Fall back rather than handing an unknown policy to the date maths.
-    leapDayPolicy: isLeapDayPolicy(row.leapDayPolicy)
-      ? row.leapDayPolicy
-      : DEFAULT_SETTINGS.leapDayPolicy,
-  };
+  return toSettings(row);
 }
 
 /** Writes a partial update, creating the row on first use. */
@@ -45,8 +34,4 @@ export async function updateSettings(
     .onConflictDoUpdate({ target: settings.id, set: { ...next, updatedAt: now } });
 
   return next;
-}
-
-function isLeapDayPolicy(value: string): value is LeapDayPolicy {
-  return value === 'feb28' || value === 'mar1';
 }

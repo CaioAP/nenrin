@@ -6,9 +6,10 @@
  * fiddly part stays testable.
  */
 
-import { makePartialDate } from '@/domain/birthday';
+import { type LeapDayPolicy, makePartialDate } from '@/domain/birthday';
 import type { Person } from '@/domain/person';
-import type { NewPersonRow, PersonRow } from './schema';
+import { type AppSettings, DEFAULT_SETTINGS } from '@/domain/settings';
+import type { NewPersonRow, PersonRow, SettingsRow } from './schema';
 
 /** What a caller must supply to create a person. Ids and timestamps are the repository's job. */
 export type NewPerson = {
@@ -116,4 +117,30 @@ export function toPersonUpdate(patch: PersonPatch, at: Date): Partial<NewPersonR
   }
 
   return update;
+}
+
+/**
+ * Settings row → domain, tolerating no row at all.
+ *
+ * A fresh install has run its migrations and written nothing, so "missing" is the normal
+ * first state rather than an error. Both the one-shot read and the live query go through
+ * here so they cannot disagree about what an unconfigured app does.
+ */
+export function toSettings(row: SettingsRow | undefined): AppSettings {
+  if (!row) return DEFAULT_SETTINGS;
+
+  return {
+    defaultLeadDays: row.defaultLeadDays,
+    notifyHour: row.notifyHour,
+    notifyMinute: row.notifyMinute,
+    // A plain TEXT column, so a hand-edited database or a future sync could carry anything.
+    // Fall back rather than handing an unknown policy to the date maths.
+    leapDayPolicy: isLeapDayPolicy(row.leapDayPolicy)
+      ? row.leapDayPolicy
+      : DEFAULT_SETTINGS.leapDayPolicy,
+  };
+}
+
+function isLeapDayPolicy(value: string): value is LeapDayPolicy {
+  return value === 'feb28' || value === 'mar1';
 }

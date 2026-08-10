@@ -27,7 +27,8 @@ export type PartialDate = {
  * constant. Default is `feb28`: it keeps the birthday in the right month, which is what
  * most people with a leap-day birthday do.
  */
-export type LeapDayPolicy = 'feb28' | 'mar1';
+export const LEAP_DAY_POLICIES = ['feb28', 'mar1'] as const;
+export type LeapDayPolicy = (typeof LEAP_DAY_POLICIES)[number];
 
 export const DEFAULT_LEAP_DAY_POLICY: LeapDayPolicy = 'feb28';
 
