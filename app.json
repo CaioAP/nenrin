@@ -8,9 +8,11 @@
     "scheme": "nenrin",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "dev.caioalfonso.nenrin",
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "dev.caioalfonso.nenrin",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

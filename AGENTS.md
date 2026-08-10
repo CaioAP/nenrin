@@ -81,6 +81,21 @@ further without ever reaching a working app.
 
 Use Expo Go or a dev build instead.
 
+## Builds
+
+`eas.json` pins `"node": "24.14.0"` on a `base` profile that every other profile extends.
+This is not cosmetic. EAS runs `nvm install <version>` on its own cloud worker, which never
+sees the local Node — and the worker's default is old enough to ship npm 10, which rejects
+this lockfile with `EBADPLATFORM @esbuild/aix-ppc64`. npm 11 accepts it. The same mismatch
+already broke GitHub Actions, which is why CI is pinned to Node 24 and `engines.node` is
+`>= 24`. Do not drop the pin from a new profile.
+
+**iOS needs usage-description strings before it can ship.** `expo-contacts`,
+`expo-calendar` and `expo-notifications` contribute their Android permissions through
+autolinked manifests, so an Android build works with no config plugin entries at all. iOS
+has no equivalent — without `NSContactsUsageDescription` and `NSCalendarsUsageDescription`
+in `app.json`, the first access call crashes rather than prompting.
+
 ## Verifying
 
 `npm run check`, `npm run lint` and `npm test` cover the pure layers. They do **not** prove
