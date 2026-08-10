@@ -31,7 +31,7 @@ const CHANNEL_ID = 'birthdays';
 /** Marks our notifications so a cancel-all never reaches a notification we did not post. */
 const REMINDER_DATA = { kind: 'birthday-reminder' } as const;
 
-let configured = false;
+let configuring: Promise<void> | null = null;
 
 /**
  * Idempotent one-time setup. Safe to call on every mount.
@@ -39,26 +39,35 @@ let configured = false;
  * The handler decides what happens when a reminder arrives while the app is open. Without
  * it, a foreground notification is delivered silently and the user sees nothing — which
  * looks exactly like a scheduling bug and is the usual cause of "it didn't fire".
+ *
+ * The *promise* is cached rather than a done flag: a flag set before the channel is created
+ * lets a second caller sail past and schedule into a channel that does not exist yet.
  */
-export async function configureNotifications(): Promise<void> {
-  if (configured) return;
-  configured = true;
+export function configureNotifications(): Promise<void> {
+  configuring ??= (async () => {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
 
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
+        name: 'Birthdays',
+        importance: Notifications.AndroidImportance.DEFAULT,
+      });
+    }
+  })().catch((error) => {
+    // Not cached as a permanent failure: the next sync retries rather than leaving the app
+    // unable to configure itself for the rest of the session.
+    configuring = null;
+    throw error;
   });
 
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-      name: 'Birthdays',
-      importance: Notifications.AndroidImportance.DEFAULT,
-    });
-  }
+  return configuring;
 }
 
 export type PermissionState = 'granted' | 'denied' | 'undetermined';
@@ -98,9 +107,13 @@ export async function requestPermission(): Promise<PermissionState> {
 export async function syncReminders(reminders: Reminder[]): Promise<number> {
   return serialize(async () => {
     await configureNotifications();
-    if ((await getPermission()) !== 'granted') return 0;
 
+    // Cancelled before the permission check, not after. Permission can be revoked while the
+    // app is backgrounded, and the reminders armed under the old grant survive that — so
+    // returning early without clearing them leaves a window the user has just switched off
+    // still firing.
     await Notifications.cancelAllScheduledNotificationsAsync();
+    if ((await getPermission()) !== 'granted') return 0;
 
     for (const reminder of reminders) {
       const { title, body } = reminderCopy(reminder);

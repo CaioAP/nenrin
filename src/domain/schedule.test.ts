@@ -6,11 +6,15 @@ import { armWindow, DEFAULT_NOTIFICATION_LIMIT, type Reminder, type Schedulable 
 const at = (year: number, month: number, day: number, hour = 9, minute = 0) =>
   new Date(year, month - 1, day, hour, minute);
 
+/** Long enough ago that every reminder's ideal moment happened on this app's watch. */
+const LONG_AGO = at(2020, 1, 1);
+
 const person = (id: string, month: number, day: number, year?: number): Schedulable => ({
   id,
   displayName: id,
   birthday: makePartialDate(month, day, year),
   leadDays: 0,
+  knownSince: LONG_AGO,
 });
 
 const options = (from: Date, overrides: Partial<Parameters<typeof armWindow>[1]> = {}) => ({
@@ -42,42 +46,99 @@ describe('armWindow', () => {
   });
 
   it('orders by when the notification fires, not by name or birthday', () => {
-    const soonWithLongLead = { ...person('december', 12, 1), leadDays: 120 };
+    // 1 December minus 100 days is 23 August — still ahead of 1 September, and still ahead
+    // of `now`, so this tests ordering rather than the catch-up rules below.
+    const soonWithLongLead = { ...person('december', 12, 1), leadDays: 100 };
     const laterWithNoLead = person('september', 9, 1);
     const reminders = armWindow([laterWithNoLead, soonWithLongLead], options(now));
     expect(idsOf(reminders)).toEqual(['december', 'september']);
   });
 
-  describe('the lead time would already have passed', () => {
-    // Birthday in 3 days, but the user asked to be told a week ahead. Skipping the year
-    // means missing a birthday that has not happened yet — the worst possible outcome.
-    const inThreeDays = { ...person('ana', 8, 12), leadDays: 7 };
+  describe('the lead time would already have passed, for a newly known person', () => {
+    // Birthday in 3 days, the user asked to be told a week ahead, and the 5 August moment
+    // passed before this person existed. Skipping the year means missing a birthday that has
+    // not happened yet — the worst possible outcome.
+    const justAdded = { ...person('ana', 8, 12), leadDays: 7, knownSince: at(2026, 8, 9, 6, 0) };
 
     it('still schedules the reminder rather than dropping it to next year', () => {
-      const [reminder] = armWindow([inThreeDays], options(now));
+      const [reminder] = armWindow([justAdded], options(now));
       expect(reminder.occursOn.getFullYear()).toBe(2026);
       expect(reminder.occursOn.getMonth()).toBe(7);
     });
 
     it('fires at the next available time of day instead of in the past', () => {
       // now is 07:00, the daily notification time is 09:00, so today at 09:00 still works.
-      const [reminder] = armWindow([inThreeDays], options(now));
+      const [reminder] = armWindow([justAdded], options(now));
       expect(reminder.fireAt).toEqual(at(2026, 8, 9, 9, 0));
       expect(reminder.fireAt.getTime()).toBeGreaterThan(now.getTime());
     });
 
     it('rolls to tomorrow when today’s notification time has already passed', () => {
       const evening = at(2026, 8, 9, 22, 30);
-      const [reminder] = armWindow([inThreeDays], options(evening));
+      const added = { ...justAdded, knownSince: at(2026, 8, 9, 22, 0) };
+      const [reminder] = armWindow([added], options(evening));
       expect(reminder.fireAt).toEqual(at(2026, 8, 10, 9, 0));
     });
 
     it('never fires after the birthday itself', () => {
-      const tomorrow = { ...person('ana', 8, 10), leadDays: 30 };
       const evening = at(2026, 8, 9, 22, 30);
+      const tomorrow = {
+        ...person('ana', 8, 10),
+        leadDays: 30,
+        knownSince: at(2026, 8, 9, 22, 0),
+      };
       const [reminder] = armWindow([tomorrow], options(evening));
       expect(reminder.fireAt).toEqual(at(2026, 8, 10, 9, 0));
       expect(reminder.fireAt.getTime()).toBeLessThanOrEqual(at(2026, 8, 10, 23, 59).getTime());
+    });
+  });
+
+  describe('the lead time already passed while the person was known', () => {
+    // The mirror of the block above, and the reason `knownSince` exists. The window is
+    // re-armed on every foreground, so a reminder whose moment has gone gets re-evaluated
+    // many times. Catching it up each time means the user is notified again every single
+    // day until the birthday — eight notifications for a one-week lead time.
+    const longKnown = { ...person('ana', 8, 12), leadDays: 7 };
+
+    it('does not re-send a reminder that has already gone out', () => {
+      // The 5 August 09:00 reminder fired. The user opens the app on the 9th.
+      expect(armWindow([longKnown], options(now))).toEqual([]);
+    });
+
+    it('stays silent on every re-arm between the lead moment and the birthday', () => {
+      // From just after the 5 August 09:00 slot up to the eve of the 12th. This is the loop
+      // that fails without the guard: one reminder per iteration, every day, for a week.
+      const afterTheSlot = [
+        at(2026, 8, 5, 10, 0),
+        at(2026, 8, 5, 22, 30),
+        ...[6, 7, 8, 9, 10, 11].flatMap((day) => [
+          at(2026, 8, day, 7, 30),
+          at(2026, 8, day, 10, 0),
+          at(2026, 8, day, 22, 30),
+        ]),
+      ];
+
+      for (const from of afterTheSlot) {
+        expect(armWindow([longKnown], options(from))).toEqual([]);
+      }
+    });
+
+    it('still fires normally before the lead moment arrives', () => {
+      const [reminder] = armWindow([longKnown], options(at(2026, 8, 1, 7, 0)));
+      expect(reminder.fireAt).toEqual(at(2026, 8, 5, 9, 0));
+    });
+
+    it('catches up once the settings change, because the lead time may have grown', () => {
+      // `knownSince` is the later of the person's row and the settings row, so raising the
+      // default lead time re-opens the catch-up for everyone it applies to.
+      const settingsJustChanged = { ...longKnown, knownSince: at(2026, 8, 9, 6, 0) };
+      const [reminder] = armWindow([settingsJustChanged], options(now));
+      expect(reminder.fireAt).toEqual(at(2026, 8, 9, 9, 0));
+    });
+
+    it('does not let a suppressed reminder cost anyone else a slot', () => {
+      const armed = armWindow([longKnown, person('bo', 12, 25)], options(now, { limit: 1 }));
+      expect(idsOf(armed)).toEqual(['bo']);
     });
   });
 

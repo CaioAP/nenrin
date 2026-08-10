@@ -8,7 +8,7 @@
 
 import { eq } from 'drizzle-orm';
 
-import type { AppSettings } from '@/domain/settings';
+import type { AppSettings, SettingsPatch } from '@/domain/settings';
 import { db } from './client';
 import { toSettings } from './mappers';
 import { settings } from './schema';
@@ -20,18 +20,20 @@ export async function getSettings(): Promise<AppSettings> {
   return toSettings(row);
 }
 
-/** Writes a partial update, creating the row on first use. */
-export async function updateSettings(
-  patch: Partial<AppSettings>,
-  now = new Date(),
-): Promise<AppSettings> {
+/**
+ * Writes a partial update, creating the row on first use.
+ *
+ * `updatedAt` is not a settable field: the scheduler treats it as evidence that the user
+ * changed something, so it is stamped here and nowhere else.
+ */
+export async function updateSettings(patch: SettingsPatch, now = new Date()): Promise<AppSettings> {
   const current = await getSettings();
-  const next = { ...current, ...patch };
+  const next = { ...current, ...patch, updatedAt: now };
 
   await db
     .insert(settings)
-    .values({ id: SETTINGS_ID, ...next, updatedAt: now })
-    .onConflictDoUpdate({ target: settings.id, set: { ...next, updatedAt: now } });
+    .values({ id: SETTINGS_ID, ...next })
+    .onConflictDoUpdate({ target: settings.id, set: next });
 
   return next;
 }

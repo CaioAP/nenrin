@@ -15,7 +15,18 @@ export type AppSettings = {
   notifyHour: number;
   notifyMinute: number;
   leapDayPolicy: LeapDayPolicy;
+  /**
+   * When these settings were last changed.
+   *
+   * Part of the domain rather than a bookkeeping column because the scheduler reads it:
+   * lengthening the lead time is one of the two things that legitimately justifies catching
+   * up a reminder whose moment has passed. See `Schedulable.knownSince`.
+   */
+  updatedAt: Date;
 };
+
+/** What a user preference is set to before the user has set anything. */
+export type SettingsPatch = Partial<Omit<AppSettings, 'updatedAt'>>;
 
 export const DEFAULT_SETTINGS: AppSettings = {
   // 0 means "on the day". A person who has not configured anything gets told on the morning
@@ -24,6 +35,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   notifyHour: 9,
   notifyMinute: 0,
   leapDayPolicy: DEFAULT_LEAP_DAY_POLICY,
+  // The epoch, not "now": unconfigured settings have never been changed, and a fresh `new
+  // Date()` here would read as a change on every launch and catch up reminders that had
+  // already fired.
+  updatedAt: new Date(0),
 };
 
 export const LEAD_DAY_CHOICES = [0, 1, 3, 7] as const;

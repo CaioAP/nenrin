@@ -92,10 +92,13 @@ export async function deletePerson(id: string, now = new Date()): Promise<boolea
  * (person → longest group → app default) is applied in the domain. Muted people are kept
  * and flagged rather than filtered here, so `armWindow` stays the single place that decides
  * who gets a notification.
+ *
+ * Takes the whole `AppSettings` rather than just a lead time because `knownSince` needs the
+ * settings timestamp too: raising the default lead time changes when a reminder is due for
+ * everyone who inherits it, which is one of the two things that justifies catching up a
+ * reminder whose moment has already passed. See `Schedulable.knownSince`.
  */
-export async function listSchedulable(
-  defaultLeadDays = DEFAULT_SETTINGS.defaultLeadDays,
-): Promise<Schedulable[]> {
+export async function listSchedulable(settings = DEFAULT_SETTINGS): Promise<Schedulable[]> {
   const rows = await db
     .select({
       id: person.id,
@@ -104,6 +107,7 @@ export async function listSchedulable(
       birthDay: person.birthDay,
       birthYear: person.birthYear,
       muted: person.muted,
+      updatedAt: person.updatedAt,
       personLeadDays: person.leadDays,
       groupLeadDays: group.leadDays,
     })
@@ -130,8 +134,9 @@ export async function listSchedulable(
     id: row.id,
     displayName: row.displayName,
     birthday: makePartialDate(row.birthMonth, row.birthDay, row.birthYear),
-    leadDays: resolveLeadDays(row.personLeadDays, groupLeadDays, defaultLeadDays),
+    leadDays: resolveLeadDays(row.personLeadDays, groupLeadDays, settings.defaultLeadDays),
     muted: row.muted,
+    knownSince: new Date(Math.max(row.updatedAt.getTime(), settings.updatedAt.getTime())),
   }));
 }
 

@@ -59,6 +59,14 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   eventually drains the window. Closing that gap needs a background task, which is knowingly
   **not in v1** — it would add a dependency, a config plugin, and a second device-only
   verification loop.
+- **`Schedulable.knownSince` is what stops a reminder repeating every day.** Re-arming means
+  `armWindow` re-evaluates reminders whose moment has already gone. Catching those up is
+  right for a person just added, and wrong for one whose reminder already fired — and the
+  two are indistinguishable without it, because a local notification delivered while the app
+  was closed leaves no trace the app can read. So the catch-up branch runs only when the
+  schedule changed *after* the moment passed. Without the guard, a one-week lead time sends
+  eight notifications instead of one. Accepted gap: granting notification permission long
+  after adding people catches up nobody, since their `updatedAt` predates the missed slots.
 - **Contacts access can be partial.** iOS 18 limited access means the user picks individual
   contacts, so import can never promise "one tap, all your contacts". The app must also be
   fully usable with contacts permission *denied*.

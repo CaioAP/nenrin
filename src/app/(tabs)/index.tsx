@@ -2,6 +2,7 @@ import { Link } from 'expo-router';
 import { useMemo } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
+import { NotificationPermission } from '@/components/notification-permission';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -38,6 +39,11 @@ export default function UpcomingScreen() {
         data={entries}
         keyExtractor={(entry) => entry.person.id}
         contentContainerStyle={styles.list}
+        // Here rather than only in Settings: someone can add every birthday they know from
+        // the People tab and never open Settings, and reminders would silently never fire.
+        // Deliberately not shown on the empty state — there is nothing to be reminded about
+        // yet, and asking for a permission before it does anything gets it denied.
+        ListHeaderComponent={NotificationPermission}
         renderItem={({ item }) => <UpcomingRow entry={item} />}
       />
     </ThemedView>

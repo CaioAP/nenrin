@@ -37,6 +37,17 @@ export type Schedulable = {
   leadDays: number;
   /** Muted people stay in the list and out of the notification window. */
   muted?: boolean;
+  /**
+   * When this person's reminder schedule last changed — the later of their own row and the
+   * app's reminder settings.
+   *
+   * The catch-up branch below needs to tell "this reminder's moment passed before we ever
+   * knew about it" from "this reminder's moment passed and it therefore already fired".
+   * Nothing else can: a delivered local notification is invisible to an app that was closed
+   * when it arrived, so the app can never record what actually went out. What it *can* know
+   * is whether a reminder could have been armed in time.
+   */
+  knownSince: Date;
 };
 
 export type Reminder = {
@@ -75,18 +86,28 @@ const addDays = (date: Date, days: number) =>
  * still ahead is the worst outcome available, so it fires at the next time-of-day slot
  * instead, clamped so it never lands after the birthday itself.
  *
- * That clamp is what makes the null case possible. When the birthday is *today* and today's
- * slot has gone, the only candidate left is in the past. Scheduling into the past is never
- * right: the OS either fires it instantly or discards it, and today's reminder has already
- * been delivered anyway, so firing again is a duplicate. The caller drops it and the
+ * **That catch-up only applies to a reminder that could not already have been sent.** The
+ * window is re-armed on every foreground, so without the `knownSince` guard a lead time of
+ * a week produces a fresh reminder every single day: the ideal moment sits in the past, the
+ * catch-up rolls it to tomorrow, it fires, and tomorrow it happens again. The guard limits
+ * catch-up to the case it was written for — a person just added, or a lead time just
+ * lengthened, where no reminder was ever armed for the moment that passed.
+ *
+ * The clamp is what makes the other null case possible. When the birthday is *today* and
+ * today's slot has gone, the only candidate left is in the past. Scheduling into the past is
+ * never right: the OS either fires it instantly or discards it, and today's reminder has
+ * already been delivered anyway, so firing again is a duplicate. The caller drops it and the
  * Upcoming list carries the day.
  *
  * Every non-null return is strictly later than `from`. `src/notifications` relies on it.
  */
-function fireTimeFor(occursOn: Date, leadDays: number, options: ArmWindowOptions): Date | null {
+function fireTimeFor(person: Schedulable, occursOn: Date, options: ArmWindowOptions): Date | null {
   const { from, timeOfDay } = options;
-  const ideal = atTimeOfDay(addDays(occursOn, -leadDays), timeOfDay);
+  const ideal = atTimeOfDay(addDays(occursOn, -person.leadDays), timeOfDay);
   if (ideal.getTime() > from.getTime()) return ideal;
+
+  // Known before the moment passed, so a reminder was armed for it and has been delivered.
+  if (person.knownSince.getTime() <= ideal.getTime()) return null;
 
   const todaySlot = atTimeOfDay(from, timeOfDay);
   const nextSlot =
@@ -111,7 +132,7 @@ export function armWindow(people: Schedulable[], options: ArmWindowOptions): Rem
     .filter((person) => !person.muted)
     .flatMap((person) => {
       const occursOn = nextOccurrence(person.birthday, today, policy);
-      const fireAt = fireTimeFor(occursOn, person.leadDays, options);
+      const fireAt = fireTimeFor(person, occursOn, options);
       // Dropped here rather than after the slice, so a reminder with nothing useful left to
       // fire at never occupies one of the scarce pending-notification slots.
       if (fireAt === null) return [];

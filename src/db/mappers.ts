@@ -138,6 +138,7 @@ export function toSettings(row: SettingsRow | undefined): AppSettings {
     leapDayPolicy: isLeapDayPolicy(row.leapDayPolicy)
       ? row.leapDayPolicy
       : DEFAULT_SETTINGS.leapDayPolicy,
+    updatedAt: row.updatedAt,
   };
 }
 
