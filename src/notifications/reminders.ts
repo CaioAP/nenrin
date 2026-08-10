@@ -199,12 +199,17 @@ export async function syncReminders(reminders: Reminder[]): Promise<number> {
  * re-arm — a settings change, a write, or returning to the foreground — wipes this too.
  * Background the app and leave it alone once you have tapped.
  */
-export async function scheduleTestReminder(inSeconds = 60): Promise<boolean> {
+export async function scheduleTestReminder(inSeconds = 60): Promise<TestReminderResult> {
   const notifications = await loadNotifications();
-  if (!notifications) return false;
+  if (!notifications) return 'unsupported';
 
   await configureNotifications();
-  if ((await getPermission()) !== 'granted') return false;
+
+  // Requests rather than checks. Unlike `syncReminders` — which runs unprompted and must
+  // never make a dialog appear out of nowhere — this only runs because someone tapped it,
+  // so prompting is exactly what they asked for.
+  const permission = await requestPermission();
+  if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'undetermined';
 
   await notifications.scheduleNotificationAsync({
     content: {
@@ -220,8 +225,11 @@ export async function scheduleTestReminder(inSeconds = 60): Promise<boolean> {
     },
   });
 
-  return true;
+  return 'armed';
 }
+
+/** Distinguishes the three ways a test can fail, so the panel can say which one happened. */
+export type TestReminderResult = 'armed' | 'unsupported' | 'denied' | 'undetermined';
 
 /** Pending reminders, for the settings screen to show and for verifying the cap on a device. */
 export async function countPending(): Promise<number> {

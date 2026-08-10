@@ -66,10 +66,16 @@ function DebugPanel() {
         disabled={busy}
         onPress={() =>
           run('Arming', async () => {
-            const armed = await scheduleTestReminder(TEST_REMINDER_SECONDS);
-            return armed
-              ? `Armed. Background the app now — any re-arm cancels it.`
-              : 'Could not arm: notifications are unavailable or not granted.';
+            switch (await scheduleTestReminder(TEST_REMINDER_SECONDS)) {
+              case 'armed':
+                return 'Armed. Background the app now — any re-arm cancels it.';
+              case 'unsupported':
+                return 'expo-notifications could not load. Expo Go cannot run reminders.';
+              case 'denied':
+                return 'Notifications are blocked. Allow them in system settings.';
+              case 'undetermined':
+                return 'Permission was not granted.';
+            }
           })
         }
       />

@@ -53,6 +53,38 @@ export function useReminders(): void {
         console.warn('Could not arm birthday reminders', error);
       });
   }, [people, settings, foregroundAt]);
+
+  useAskOnce(people.length > 0);
+}
+
+/** Module-level, not state: "have we already asked" must survive every re-render and remount. */
+let asked = false;
+
+/**
+ * Requests notification permission once, the first time there is a birthday to be reminded
+ * about.
+ *
+ * Not on launch. A cold permission dialog on first open — before the app has shown what it
+ * is for, and with an empty list behind it — is the version people decline, and on Android a
+ * decline is close to final: two dismissals and `canAskAgain` goes false, leaving system
+ * settings as the only way back. Waiting until someone has actually saved a birthday means
+ * the dialog arrives when the answer is obvious.
+ *
+ * Deliberately not persisted. `asked` resets on relaunch, but the OS is the real gate: once
+ * it has an answer the state stops being `undetermined` and `requestPermission` returns it
+ * without showing anything. The flag only stops a second dialog within one session.
+ */
+function useAskOnce(hasSomeoneToRemindAbout: boolean): void {
+  useEffect(() => {
+    if (asked || !hasSomeoneToRemindAbout) return;
+    asked = true;
+
+    requestPermission().catch((error) => {
+      // Retried next launch. The Settings prompt is the manual route in the meantime.
+      asked = false;
+      console.warn('Could not ask for notification permission', error);
+    });
+  }, [hasSomeoneToRemindAbout]);
 }
 
 /**
