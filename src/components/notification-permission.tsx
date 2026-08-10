@@ -18,7 +18,18 @@ export function NotificationPermission() {
   const theme = useTheme();
   const { permission, ask } = useNotificationPermission();
 
-  if (permission === 'granted') return null;
+  if (permission === null || permission === 'granted') return null;
+
+  // Expo Go cannot load expo-notifications at all (see `loadNotifications`). Only a
+  // developer ever sees this, so it says what actually fixes it and offers no button —
+  // there is nothing to tap that would help.
+  if (permission === 'unsupported') {
+    return (
+      <ThemedText type="small" themeColor="textSecondary">
+        Reminders are unavailable in Expo Go. Run a development build to test them.
+      </ThemedText>
+    );
+  }
 
   // Once the OS has been told no, asking again does nothing — the request resolves
   // instantly with the same answer and the user sees a button that appears broken. The

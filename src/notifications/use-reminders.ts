@@ -62,10 +62,13 @@ export function useReminders(): void {
  * app is backgrounded — and after they have been sent there to do exactly that.
  */
 export function useNotificationPermission(): {
-  permission: PermissionState;
+  /** Null until the OS has answered — callers render nothing rather than guess. */
+  permission: PermissionState | null;
   ask: () => Promise<void>;
 } {
-  const [permission, setPermission] = useState<PermissionState>('undetermined');
+  // Starts unknown rather than 'undetermined': the first read is a round trip to the OS, and
+  // assuming a state means flashing "Allow notifications" at someone who already granted it.
+  const [permission, setPermission] = useState<PermissionState | null>(null);
   const foregroundAt = useForegroundTime();
 
   // Another signal-only dependency: the answer comes from the OS, so nothing in React state

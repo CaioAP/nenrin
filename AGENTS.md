@@ -70,6 +70,16 @@ ask-link. Anything that does not reduce entry cost is a side feature.
 - **Contacts access can be partial.** iOS 18 limited access means the user picks individual
   contacts, so import can never promise "one tap, all your contacts". The app must also be
   fully usable with contacts permission *denied*.
+- **Never `import` `expo-notifications` at module scope.** Use `loadNotifications()` in
+  `src/notifications/reminders.ts`, which dynamic-imports it behind an `isRunningInExpoGo()`
+  check. A plain import **crashes the entire app in Expo Go on Android at launch**, and not
+  because of anything you called: the barrel re-exports
+  `DevicePushTokenAutoRegistration.fx`, which registers a push-token listener at module
+  scope, and that listener throws because remote push was removed from Expo Go in SDK 53.
+  The symptom does not name notifications — every route below the import fails to evaluate
+  and you get `Route "./_layout.tsx" is missing the required default export` followed by
+  `Cannot read property 'ErrorBoundary' of undefined`. `check`, `lint`, `test` and
+  `expo export` all pass with this bug present.
 - **Migrations need `metro.config.js` *and* `babel.config.js`, both.** `./drizzle/migrations.js`
   imports each migration as a `.sql` file. Metro must resolve the extension
   (`sourceExts.push('sql')`) *and* `babel-plugin-inline-import` must inline it as a string —
