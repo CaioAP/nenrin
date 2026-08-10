@@ -69,3 +69,53 @@ export function formatTimeOfDay(hour: number, minute: number): string {
 export function describeLeapDayPolicy(policy: LeapDayPolicy): string {
   return policy === 'feb28' ? '28 February' : '1 March';
 }
+
+/** Whether a time is one of the offered shortcuts, or something the user typed themselves. */
+export function isPresetTime(hour: number, minute: number): boolean {
+  return minute === 0 && (NOTIFY_TIME_CHOICES as readonly number[]).includes(hour);
+}
+
+export type TimeDraft = { hour: string; minute: string };
+
+export type TimeErrors = { hour?: string; minute?: string };
+
+export type TimeResult =
+  | { ok: true; value: { hour: number; minute: number } }
+  | { ok: false; errors: TimeErrors };
+
+/**
+ * Validates a typed time of day.
+ *
+ * 24-hour, and deliberately not a native time picker: a picker is a platform-specific modal
+ * whose output still has to be validated, and two number fields are both faster to use and
+ * the only version testable without a simulator.
+ *
+ * Collects both errors rather than stopping at the first, for the same reason
+ * `parsePersonDraft` does — fixing one field only to discover the next is wrong feels like
+ * the form is arguing.
+ */
+export function parseTimeOfDay(draft: TimeDraft): TimeResult {
+  const errors: TimeErrors = {};
+
+  const hour = parsePart(draft.hour, 0, 23);
+  if (hour === null) errors.hour = 'Hours run from 0 to 23.';
+
+  const minute = parsePart(draft.minute, 0, 59);
+  if (minute === null) errors.minute = 'Minutes run from 0 to 59.';
+
+  if (hour === null || minute === null) return { ok: false, errors };
+
+  return { ok: true, value: { hour, minute } };
+}
+
+function parsePart(raw: string, min: number, max: number): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+
+  const value = Number(trimmed);
+  // `Number('')` is 0 and `Number(' 9 ')` is 9, so the blank case is handled above and the
+  // integer check rejects '9.5' and 'nine' together.
+  if (!Number.isInteger(value) || value < min || value > max) return null;
+
+  return value;
+}

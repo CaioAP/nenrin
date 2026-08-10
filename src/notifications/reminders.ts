@@ -184,6 +184,45 @@ export async function syncReminders(reminders: Reminder[]): Promise<number> {
   });
 }
 
+/**
+ * Fires one notification a few seconds from now. Development only.
+ *
+ * Reminders can only fire at the configured time of day, so proving delivery works would
+ * otherwise mean waiting until 09:00 — for each of three separate questions (does it fire,
+ * what is the real pending cap, does the Android 13 permission flow work). This makes each
+ * of them a one-minute experiment.
+ *
+ * Returns false when it could not be scheduled, so the caller can say so rather than
+ * leaving someone waiting for a notification that was never armed.
+ *
+ * Caveat worth knowing while testing: `syncReminders` cancels *everything* pending, so any
+ * re-arm — a settings change, a write, or returning to the foreground — wipes this too.
+ * Background the app and leave it alone once you have tapped.
+ */
+export async function scheduleTestReminder(inSeconds = 60): Promise<boolean> {
+  const notifications = await loadNotifications();
+  if (!notifications) return false;
+
+  await configureNotifications();
+  if ((await getPermission()) !== 'granted') return false;
+
+  await notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Test reminder',
+      body: `Armed ${inSeconds}s earlier. Delivery works.`,
+      data: { ...REMINDER_DATA, test: true },
+    },
+    trigger: {
+      type: notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: inSeconds,
+      repeats: false,
+      channelId: CHANNEL_ID,
+    },
+  });
+
+  return true;
+}
+
 /** Pending reminders, for the settings screen to show and for verifying the cap on a device. */
 export async function countPending(): Promise<number> {
   const notifications = await loadNotifications();

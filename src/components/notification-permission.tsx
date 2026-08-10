@@ -1,8 +1,8 @@
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 import { useNotificationPermission } from '@/notifications/use-reminders';
+import { ActionButton } from './action-button';
 import { ThemedText } from './themed-text';
 
 /**
@@ -12,10 +12,9 @@ import { ThemedText } from './themed-text';
  * app, add every birthday they know from the People tab, and never open Settings. Asking
  * only there means reminders silently never work for them — which is the single failure
  * this whole feature exists to prevent. A permanent "notifications: on" row would be noise;
- * the only states worth surfacing are the two where nothing will fire.
+ * the only states worth surfacing are the ones where nothing will fire.
  */
 export function NotificationPermission() {
-  const theme = useTheme();
   const { permission, ask } = useNotificationPermission();
 
   if (permission === null || permission === 'granted') return null;
@@ -45,27 +44,14 @@ export function NotificationPermission() {
           ? 'Notifications are blocked for Nenrin. Birthdays still show up here, but nothing will tell you about them.'
           : 'Nenrin needs permission to notify you before a birthday.'}
       </ThemedText>
-      <Pressable
+      <ActionButton
+        label={denied ? 'Open system settings' : 'Allow notifications'}
         onPress={() => (denied ? Linking.openSettings() : ask())}
-        accessibilityRole="button"
-        style={[styles.action, { backgroundColor: theme.tint }]}
-      >
-        <ThemedText type="smallBold" themeColor="onTint">
-          {denied ? 'Open system settings' : 'Allow notifications'}
-        </ThemedText>
-      </Pressable>
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { gap: Spacing.two },
-  action: {
-    minHeight: 44,
-    borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.three,
-    alignSelf: 'flex-start',
-  },
 });
