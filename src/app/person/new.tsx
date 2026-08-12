@@ -25,7 +25,13 @@ export default function NewPersonScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Add a person' }} />
-      <PersonForm draft={draft} onChange={setDraft} onSubmit={save} submitLabel="Save" />
+      <PersonForm
+        draft={draft}
+        onChange={setDraft}
+        onSubmit={save}
+        submitLabel="Save"
+        autoFocusName
+      />
     </>
   );
 }

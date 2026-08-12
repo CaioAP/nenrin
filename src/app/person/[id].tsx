@@ -64,7 +64,7 @@ export default function PersonScreen() {
   }
   // Gated on `ready`, not `loading`: the draft is seeded by an effect that runs *after* the
   // first render with a loaded person, so rendering here would paint one frame of an empty
-  // form — and fire `autoFocus` on a blank name field before the real values land.
+  // form.
   if (!ready) return null;
 
   return (

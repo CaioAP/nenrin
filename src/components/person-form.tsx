@@ -20,11 +20,18 @@ export function PersonForm({
   onChange,
   onSubmit,
   submitLabel,
+  autoFocusName = false,
 }: {
   draft: PersonDraft;
   onChange: (next: PersonDraft) => void;
   onSubmit: () => Promise<DraftErrors | null>;
   submitLabel: string;
+  /**
+   * Opt-in, because focus opens the keyboard over the form. Right when adding someone — the
+   * field is empty and the name is the whole point — and wrong when editing, where the
+   * keyboard hides the fields the user came to change.
+   */
+  autoFocusName?: boolean;
 }) {
   const theme = useTheme();
   const [errors, setErrors] = useState<DraftErrors>({});
@@ -51,7 +58,7 @@ export function PersonForm({
             onChangeText={(displayName) => onChange({ ...draft, displayName })}
             placeholder="Who is it?"
             placeholderTextColor={theme.textSecondary}
-            autoFocus
+            autoFocus={autoFocusName}
             style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
           />
           <FieldError message={errors.displayName} />
