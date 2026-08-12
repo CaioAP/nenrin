@@ -78,17 +78,21 @@ export async function updatePerson(
  * do with the birthday, and keeping it narrow means the one write the message screen makes
  * is a write nobody has to read `toPersonUpdate` to understand.
  *
- * It still bumps `updatedAt`, because v2's backup queue needs every change to be visible.
- * Note the consequence — `updatedAt` is what `Schedulable.knownSince` reads, and
- * `armWindow`'s catch-up branch re-fires a reminder whose moment passed *before* the
- * schedule changed. So changing someone's tone in the afternoon can re-fire the reminder
- * that already went out this morning. Confirm on a device; if it happens, the fix is to
- * leave `updatedAt` alone here and give v2 a separate dirty flag, not to widen `knownSince`.
+ * Deliberately does not bump `updatedAt`. `updatedAt` is what `Schedulable.knownSince`
+ * reads, and `armWindow`'s catch-up branch treats a `knownSince` later than a reminder's
+ * ideal moment as licence to re-arm it — that licence does not expire for that occurrence.
+ * A tone change is not a schedule change, so letting it touch `updatedAt` would convert a
+ * reminder that already fired into one that fires again on every remaining day up to the
+ * birthday (see `schedule.test.ts`, `'re-arms every remaining morning once knownSince moves
+ * past the lead moment'`). v2's backup queue will need its own dirty flag rather than
+ * reading `updatedAt` for this reason — `updatePerson` has the identical problem for a note
+ * edit, and the durable fix for both is a separate `scheduleChangedAt` column that only
+ * schedule-relevant writes touch.
  */
-export async function setTone(id: string, tone: Tone, now = new Date()): Promise<Person | null> {
+export async function setTone(id: string, tone: Tone): Promise<Person | null> {
   const [updated] = await db
     .update(person)
-    .set({ tone, updatedAt: now })
+    .set({ tone })
     .where(and(eq(person.id, id), alive))
     .returning();
   return updated ? toPerson(updated) : null;

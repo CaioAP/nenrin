@@ -123,6 +123,21 @@ describe('armWindow', () => {
       }
     });
 
+    it('re-arms every remaining morning once knownSince moves past the lead moment', () => {
+      // `knownSince` is `updatedAt`, so any write that touches it — not just adding the
+      // person — relicenses the catch-up branch above. There is no way for a pure function
+      // with no memory of what already fired to tell "just relicensed" from "still
+      // licensed from yesterday", so this is not a bug to fix here: it is the reason
+      // `setTone` must never be the write that bumps `updatedAt`. One touch after the lead
+      // moment passes costs one spurious reminder per remaining day, not one in total.
+      const touched = { ...longKnown, knownSince: at(2026, 8, 9, 6, 0) };
+
+      for (const day of [9, 10, 11]) {
+        const [reminder] = armWindow([touched], options(at(2026, 8, day, 7, 0)));
+        expect(reminder.fireAt).toEqual(at(2026, 8, day, 9, 0));
+      }
+    });
+
     it('still fires normally before the lead moment arrives', () => {
       const [reminder] = armWindow([longKnown], options(at(2026, 8, 1, 7, 0)));
       expect(reminder.fireAt).toEqual(at(2026, 8, 5, 9, 0));
