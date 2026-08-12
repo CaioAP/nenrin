@@ -4,10 +4,32 @@ import { ActivityIndicator, StyleSheet, useColorScheme } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Colors, Spacing } from '@/constants/theme';
 import { db, migrations } from '@/db/client';
 import { useNotificationTap } from '@/notifications/use-notification-tap';
 import { useReminders } from '@/notifications/use-reminders';
+
+/**
+ * React Navigation draws the headers and the screen behind them, so it needs the same
+ * surfaces the app does. Its own dark theme is near-black (`card` is `rgb(18, 18, 18)`),
+ * which left a visible seam under the header once `background` stopped being black.
+ */
+function navigationTheme(scheme: 'light' | 'dark') {
+  const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+  const colors = Colors[scheme];
+
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      background: colors.background,
+      card: colors.background,
+      text: colors.text,
+      border: colors.backgroundSelected,
+      primary: colors.tint,
+    },
+  };
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -16,7 +38,7 @@ export default function RootLayout() {
   const { success, error } = useMigrations(db, migrations);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={navigationTheme(colorScheme === 'dark' ? 'dark' : 'light')}>
       {error ? <MigrationFailed error={error} /> : success ? <AppStack /> : <Starting />}
     </ThemeProvider>
   );
