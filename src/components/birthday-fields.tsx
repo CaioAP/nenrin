@@ -99,12 +99,17 @@ function ChipRow({
 }) {
   const scroll = useRef<ScrollView>(null);
   const selectedX = useRef<number | null>(null);
+  const measured = useRef(false);
   const revealed = useRef(false);
 
-  // One-shot: after this, the row is the user's to scroll. Re-running it on every selection
-  // would yank the row out from under a finger mid-scroll.
+  // Waits on both facts, because either can arrive first: a `scrollTo` issued before the row
+  // has measured its content is dropped by Android with no error. Whichever callback lands
+  // second does the scroll.
+  //
+  // One-shot after that — the row is then the user's, and re-running it on every selection
+  // would yank it out from under a finger mid-scroll.
   const reveal = () => {
-    if (revealed.current || selectedX.current === null) return;
+    if (revealed.current || selectedX.current === null || !measured.current) return;
     revealed.current = true;
     scroll.current?.scrollTo({
       x: Math.max(0, selectedX.current - Spacing.three),
@@ -118,10 +123,10 @@ function ChipRow({
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.row}
-      // A `scrollTo` fired from the chip's own `onLayout` can arrive before the row knows its
-      // content size, and Android drops it with no error. Trying again once the size is known
-      // costs nothing, and the latch keeps it to a single jump either way.
-      onContentSizeChange={reveal}
+      onContentSizeChange={() => {
+        measured.current = true;
+        reveal();
+      }}
     >
       {options.map((option) => (
         <Chip
