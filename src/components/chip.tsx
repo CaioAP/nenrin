@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { type LayoutChangeEvent, Pressable, StyleSheet } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -16,17 +16,21 @@ export function Chip({
   selected,
   onPress,
   accessibilityLabel,
+  onLayout,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
   accessibilityLabel?: string;
+  /** Reports the chip's position within its row, so a scrolling row can reveal a selection. */
+  onLayout?: (event: LayoutChangeEvent) => void;
 }) {
   const theme = useTheme();
 
   return (
     <Pressable
       onPress={onPress}
+      onLayout={onLayout}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected }}
