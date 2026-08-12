@@ -95,7 +95,9 @@ export default function MessageScreen() {
                 key={value}
                 label={label}
                 selected={value === tone}
-                onPress={() => setTone(person.id, value)}
+                onPress={() => {
+                  if (value !== tone) setTone(person.id, value);
+                }}
                 accessibilityLabel={`${label} tone`}
               />
             ))}
