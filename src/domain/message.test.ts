@@ -151,7 +151,7 @@ describe('messageOptions', () => {
     expect(second).toEqual(first);
   });
 
-  it('returns an empty list rather than throwing when every template needs an age', () => {
+  it('never renders a literal {age} when the birth year is unknown', () => {
     // No tone is age-only today, so the guarantee is asserted against a hand-built set
     // instead of a real one — a future template edit must not turn this into a crash.
     const ageOnly = TEMPLATES.filter((t) => t.needsAge && t.tone === 'family');
