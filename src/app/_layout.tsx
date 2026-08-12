@@ -38,6 +38,7 @@ function AppStack() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="person/new" options={{ presentation: 'modal' }} />
       <Stack.Screen name="person/[id]" />
+      <Stack.Screen name="message/[id]" />
     </Stack>
   );
 }
