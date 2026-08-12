@@ -1,4 +1,4 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet } from 'react-native';
 
@@ -72,6 +72,13 @@ export default function PersonScreen() {
       <Stack.Screen options={{ title: person.displayName }} />
       <PersonForm draft={draft} onChange={setDraft} onSubmit={save} submitLabel="Save changes" />
       <ThemedView style={styles.footer}>
+        <Link href={`/message/${id}`} asChild>
+          <Pressable accessibilityRole="button" style={styles.action}>
+            <ThemedText type="smallBold" themeColor="tint">
+              Write a message
+            </ThemedText>
+          </Pressable>
+        </Link>
         <Pressable onPress={confirmDelete} accessibilityRole="button" style={styles.remove}>
           <ThemedText type="small" themeColor="danger">
             Remove {person.displayName}
@@ -95,6 +102,7 @@ function Centred({ title, body }: { title: string; body: string }) {
 
 const styles = StyleSheet.create({
   footer: { padding: Spacing.three },
+  action: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   remove: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   centred: {
     flex: 1,
