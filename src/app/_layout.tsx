@@ -6,6 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { db, migrations } from '@/db/client';
+import { useNotificationTap } from '@/notifications/use-notification-tap';
 import { useReminders } from '@/notifications/use-reminders';
 
 export default function RootLayout() {
@@ -32,6 +33,7 @@ export default function RootLayout() {
  */
 function AppStack() {
   useReminders();
+  useNotificationTap();
 
   return (
     <Stack>
