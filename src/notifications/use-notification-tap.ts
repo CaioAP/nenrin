@@ -28,12 +28,24 @@ export function useNotificationTap(): void {
     let cancelled = false;
     let subscription: { remove: () => void } | undefined;
 
+    // A cold-start tap is delivered on both channels below, not one: both the native Android
+    // (`onNotificationResponseIntentReceived`) and iOS (`didReceive`) sides record the
+    // response *and* emit it as an event in the same call, and Expo's own
+    // `useLastNotificationResponse` carries a dedup for exactly this reason (compares
+    // `notification.request.identifier`). Without the same guard here, one tap would push
+    // `/person/[id]` twice.
+    let handledId: string | null = null;
+
     (async () => {
       const notifications = await loadNotifications();
       // Expo Go, where reminders cannot exist in the first place. Every other route works.
       if (!notifications || cancelled) return;
 
       const open = (response: NotificationResponse) => {
+        const id = response.notification.request.identifier;
+        if (id === handledId) return;
+        handledId = id;
+
         // A response can also come from a notification *action*; only a plain tap should
         // navigate. The development test reminder carries no personId and is ignored here.
         if (response.actionIdentifier !== notifications.DEFAULT_ACTION_IDENTIFIER) return;
