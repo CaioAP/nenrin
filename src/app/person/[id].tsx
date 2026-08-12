@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet } from 'react-native';
@@ -71,7 +72,26 @@ export default function PersonScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: person.displayName }} />
+      <Stack.Screen
+        options={{
+          title: person.displayName,
+          headerRight: () => (
+            <Pressable
+              onPress={confirmDelete}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${person.displayName}`}
+              // The box is small enough to sit in a header without crowding the title, so the
+              // 44pt touch target comes from hitSlop rather than from its size.
+              hitSlop={Spacing.two}
+              style={[styles.delete, { backgroundColor: theme.danger }]}
+            >
+              {/* `background`, not a fixed white: dark mode's danger is a pale pink, and white
+                  on it is unreadable. Same rule as `onTint` — pick the colour that passes. */}
+              <Ionicons name="trash" size={18} color={theme.background} />
+            </Pressable>
+          ),
+        }}
+      />
       <PersonForm
         draft={draft}
         onChange={setDraft}
@@ -92,13 +112,6 @@ export default function PersonScreen() {
           </Link>
         }
       />
-      <ThemedView style={styles.footer}>
-        <Pressable onPress={confirmDelete} accessibilityRole="button" style={styles.remove}>
-          <ThemedText type="small" themeColor="danger">
-            Remove {person.displayName}
-          </ThemedText>
-        </Pressable>
-      </ThemedView>
     </>
   );
 }
@@ -115,7 +128,15 @@ function Centred({ title, body }: { title: string; body: string }) {
 }
 
 const styles = StyleSheet.create({
-  footer: { padding: Spacing.three },
+  delete: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    // Android's header puts nothing between headerRight and the screen edge.
+    marginRight: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   outlined: {
     minHeight: 44,
     borderRadius: 4,
@@ -123,7 +144,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  remove: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   centred: {
     flex: 1,
     alignItems: 'center',
