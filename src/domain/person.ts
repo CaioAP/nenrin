@@ -7,6 +7,7 @@
  */
 
 import type { PartialDate } from './birthday';
+import type { Tone } from './message';
 
 /** Where a person came from. Mirrors the adapter ids in `src/sources/`. */
 export const PERSON_SOURCES = ['manual', 'contacts', 'calendar', 'ask-link'] as const;
@@ -20,6 +21,8 @@ export type Person = {
   /** Per-person override for days of lead time. Null means "inherit". */
   leadDays: number | null;
   muted: boolean;
+  /** Relationship tone for suggested messages. Null means never chosen. */
+  tone: Tone | null;
   source: PersonSource;
   /** The contact/event id this row was imported from, or null for manual entries. */
   externalId: string | null;

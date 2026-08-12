@@ -20,6 +20,7 @@ import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlit
 
 // Type-only, and it points at the domain rather than the other way round: the domain never
 // imports the database. One definition of the source union, used to type the column.
+import type { Tone } from '@/domain/message';
 import type { PersonSource } from '@/domain/person';
 
 const now = sql`(unixepoch() * 1000)`;
@@ -47,6 +48,12 @@ export const person = sqliteTable(
     source: text('source').$type<PersonSource>().notNull().default('manual'),
     /** The contact/event id this row was imported from, for re-import de-duplication. */
     externalId: text('external_id'),
+    /**
+     * Relationship tone for suggested messages. Null means the user has never chosen one —
+     * kept distinct from 'close' so a future groups-derived tone can fill in only where
+     * nobody has decided.
+     */
+    tone: text('tone').$type<Tone>(),
 
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(now),

@@ -8,6 +8,13 @@
       "when": 1786281181501,
       "tag": "0000_sour_next_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786497893633,
+      "tag": "0001_naive_the_fury",
+      "breakpoints": true
     }
   ]
 }
