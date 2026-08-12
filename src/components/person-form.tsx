@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
@@ -21,11 +21,14 @@ export function PersonForm({
   onSubmit,
   submitLabel,
   autoFocusName = false,
+  footer,
 }: {
   draft: PersonDraft;
   onChange: (next: PersonDraft) => void;
   onSubmit: () => Promise<DraftErrors | null>;
   submitLabel: string;
+  /** Secondary actions, rendered tight under the submit button so they read as a group. */
+  footer?: ReactNode;
   /**
    * Opt-in, because focus opens the keyboard over the form. Right when adding someone — the
    * field is empty and the name is the whole point — and wrong when editing, where the
@@ -87,17 +90,22 @@ export function PersonForm({
           />
         </View>
 
-        <Pressable
-          onPress={submit}
-          disabled={saving}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: saving }}
-          style={[styles.submit, { backgroundColor: theme.tint, opacity: saving ? 0.6 : 1 }]}
-        >
-          <ThemedText type="smallBold" themeColor="onTint">
-            {saving ? 'Saving…' : submitLabel}
-          </ThemedText>
-        </Pressable>
+        {/* Grouped, because `content` spaces its children 24pt apart — enough that a footer
+            button would read as an unrelated section rather than an alternative to Save. */}
+        <View style={styles.actions}>
+          <Pressable
+            onPress={submit}
+            disabled={saving}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: saving }}
+            style={[styles.submit, { backgroundColor: theme.tint, opacity: saving ? 0.6 : 1 }]}
+          >
+            <ThemedText type="smallBold" themeColor="onTint">
+              {saving ? 'Saving…' : submitLabel}
+            </ThemedText>
+          </Pressable>
+          {footer}
+        </View>
       </ScrollView>
     </ThemedView>
   );
@@ -127,6 +135,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   multiline: { minHeight: 88, paddingTop: Spacing.two, textAlignVertical: 'top' },
+  actions: { gap: Spacing.two },
   submit: {
     minHeight: 44,
     borderRadius: 4,

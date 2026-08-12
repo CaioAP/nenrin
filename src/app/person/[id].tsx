@@ -14,9 +14,11 @@ import {
   type PersonDraft,
   parsePersonDraft,
 } from '@/domain/draft';
+import { useTheme } from '@/hooks/use-theme';
 
 export default function PersonScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const theme = useTheme();
   const { person, loading, error } = usePerson(id);
   const [draft, setDraft] = useState<PersonDraft>(EMPTY_PERSON_DRAFT);
   const [ready, setReady] = useState(false);
@@ -70,15 +72,27 @@ export default function PersonScreen() {
   return (
     <>
       <Stack.Screen options={{ title: person.displayName }} />
-      <PersonForm draft={draft} onChange={setDraft} onSubmit={save} submitLabel="Save changes" />
+      <PersonForm
+        draft={draft}
+        onChange={setDraft}
+        onSubmit={save}
+        submitLabel="Save changes"
+        footer={
+          <Link href={`/message/${id}`} asChild>
+            {/* Flattened, not an array: `asChild` clones this into expo-router's <Slot>,
+                which rejects an array style at runtime. */}
+            <Pressable
+              accessibilityRole="button"
+              style={StyleSheet.flatten([styles.outlined, { borderColor: theme.tint }])}
+            >
+              <ThemedText type="smallBold" themeColor="tint">
+                Write a message
+              </ThemedText>
+            </Pressable>
+          </Link>
+        }
+      />
       <ThemedView style={styles.footer}>
-        <Link href={`/message/${id}`} asChild>
-          <Pressable accessibilityRole="button" style={styles.action}>
-            <ThemedText type="smallBold" themeColor="tint">
-              Write a message
-            </ThemedText>
-          </Pressable>
-        </Link>
         <Pressable onPress={confirmDelete} accessibilityRole="button" style={styles.remove}>
           <ThemedText type="small" themeColor="danger">
             Remove {person.displayName}
@@ -102,7 +116,13 @@ function Centred({ title, body }: { title: string; body: string }) {
 
 const styles = StyleSheet.create({
   footer: { padding: Spacing.three },
-  action: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  outlined: {
+    minHeight: 44,
+    borderRadius: 4,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   remove: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   centred: {
     flex: 1,
