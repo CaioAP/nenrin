@@ -40,18 +40,23 @@ bad experience came from.
 ## Module layout
 
 ```
+src/domain/
+  import.ts       ImportCandidate, partitionCandidates()     pure, tested
+
 src/sources/
-  types.ts        BirthdaySource, ImportCandidate            pure types
+  types.ts        BirthdaySource, AccessLevel                pure types
   contacts.ts     expo-contacts calls, nothing else          device-only
   map-contact.ts  platform contact -> ImportCandidate        pure, tested
-
-src/domain/
-  import.ts       partitionCandidates()                      pure, tested
 
 src/db/
   skipped.ts      listSkippedExternalIds(), skipContact()
   people.ts       + listExternalIdsBySource()
 ```
+
+`ImportCandidate` is a domain type, not a source type. `partitionCandidates` needs it, and a
+module in `src/domain/` may not import from `src/sources/` — putting the type beside the
+adapters would invert the dependency the architecture rule exists to protect. Sources depend
+on the domain; never the reverse.
 
 The split between `contacts.ts` and `map-contact.ts` is the load-bearing decision here.
 
@@ -68,6 +73,7 @@ argument it is handed. `src/domain/` stays free of any knowledge that contacts e
 ## The interface
 
 ```ts
+// src/domain/import.ts
 export type ImportCandidate = {
   externalId: string;
   displayName: string;
@@ -76,6 +82,7 @@ export type ImportCandidate = {
   source: PersonSource;
 };
 
+// src/sources/types.ts
 export interface BirthdaySource {
   id: PersonSource;
   isAvailable(): Promise<boolean>;
