@@ -1,3 +1,4 @@
+import * as Contacts from 'expo-contacts';
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -104,6 +105,12 @@ function DebugPanel() {
         }
       />
 
+      <ActionButton
+        label="Probe contacts"
+        disabled={busy}
+        onPress={() => run('Probing', probeContacts)}
+      />
+
       {status ? (
         <ThemedText type="small" themeColor="textSecondary">
           {status}
@@ -111,6 +118,52 @@ function DebugPanel() {
       ) : null}
     </View>
   );
+}
+
+const PROBE_SAMPLE_LIMIT = 10;
+
+/**
+ * Dumps what the platform actually returns for birthdays, because the SDK types cannot say.
+ *
+ * `dates[].label` is typed as a bare string and documented with "birthday" only as an
+ * example, so on Android there is no way to know from the docs whether the label is a fixed
+ * English constant or the device locale's word. Guessing fails silently: an unmatched label
+ * makes a contact look like it has no birthday, which is indistinguishable from one that
+ * genuinely has none.
+ *
+ * Reports only contacts carrying at least one date — a contact with none says nothing about
+ * labelling — and caps the sample, because the question is what the strings look like and
+ * ten answers that as well as four hundred.
+ */
+async function probeContacts(): Promise<string> {
+  const permission = await Contacts.requestPermissionsAsync();
+  if (!permission.granted) {
+    return `Permission not granted (accessPrivileges: ${permission.accessPrivileges ?? 'unknown'})`;
+  }
+
+  const contacts = await Contacts.Contact.getAllDetails([
+    Contacts.ContactField.FULL_NAME,
+    Contacts.ContactField.BIRTHDAY,
+    Contacts.ContactField.DATES,
+  ]);
+
+  const withDates = contacts.filter(
+    (contact) => contact.birthday != null || (contact.dates?.length ?? 0) > 0,
+  );
+
+  const lines = withDates.slice(0, PROBE_SAMPLE_LIMIT).map((contact) => {
+    const dates = (contact.dates ?? [])
+      .map((entry) => `    label=${JSON.stringify(entry.label)} date=${JSON.stringify(entry.date)}`)
+      .join('\n');
+    return `${contact.fullName ?? '(no name)'}\n  birthday=${JSON.stringify(contact.birthday)}\n${dates}`;
+  });
+
+  return [
+    `accessPrivileges: ${permission.accessPrivileges ?? 'unknown'}`,
+    `${withDates.length} of ${contacts.length} contacts carry a date`,
+    '',
+    ...lines,
+  ].join('\n');
 }
 
 const styles = StyleSheet.create({

@@ -8,7 +8,10 @@
     "scheme": "nenrin",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "dev.caioalfonso.nenrin"
+      "bundleIdentifier": "dev.caioalfonso.nenrin",
+      "infoPlist": {
+        "NSContactsUsageDescription": "Nenrin reads your contacts so it can find birthdays you have already saved, instead of asking you to type them in again."
+      }
     },
     "android": {
       "package": "dev.caioalfonso.nenrin",
