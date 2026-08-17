@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { firstNameOf, messagesFor, renderTemplate, TEMPLATES } from './message';
+import {
+  DEFAULT_TONE,
+  firstNameOf,
+  messageOptions,
+  messagesFor,
+  renderTemplate,
+  TEMPLATES,
+} from './message';
 
 describe('firstNameOf', () => {
   it('takes the first word of a full name', () => {
@@ -105,5 +112,62 @@ describe('TEMPLATES', () => {
   it('has unique ids, so a favourite can be stored by id later', () => {
     const ids = TEMPLATES.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('messageOptions', () => {
+  it('returns the template id alongside the rendered text', () => {
+    const options = messageOptions({ displayName: 'Ana Paula', age: null, tone: 'close' });
+
+    expect(options).toContainEqual({ id: 'close-plain', text: 'Happy birthday, Ana!' });
+  });
+
+  it('returns only the requested tone', () => {
+    const ids = messageOptions({ displayName: 'Ana', age: 38, tone: 'colleague' }).map((o) => o.id);
+
+    expect(ids.every((id) => id.startsWith('colleague-'))).toBe(true);
+    expect(ids.length).toBeGreaterThan(0);
+  });
+
+  it('drops age-dependent templates when the birth year is unknown', () => {
+    const ids = messageOptions({ displayName: 'Ana', age: null, tone: 'family' }).map((o) => o.id);
+
+    expect(ids).not.toContain('family-age');
+  });
+
+  it('keeps age-dependent templates when the age is known', () => {
+    const options = messageOptions({ displayName: 'Ana', age: 38, tone: 'family' });
+
+    expect(options).toContainEqual({
+      id: 'family-age',
+      text: 'Happy 38th, Ana! Hope today is a good one.',
+    });
+  });
+
+  it('returns ids that are stable across calls, so a selection survives a re-render', () => {
+    const first = messageOptions({ displayName: 'Ana', age: 38, tone: 'close' }).map((o) => o.id);
+    const second = messageOptions({ displayName: 'Ana', age: 38, tone: 'close' }).map((o) => o.id);
+
+    expect(second).toEqual(first);
+  });
+
+  it('never renders a literal {age} when the birth year is unknown', () => {
+    // No tone is age-only today, so the guarantee is asserted against a hand-built set
+    // instead of a real one — a future template edit must not turn this into a crash.
+    const ageOnly = TEMPLATES.filter((t) => t.needsAge && t.tone === 'family');
+    expect(ageOnly.length).toBeGreaterThan(0);
+
+    const rendered = messageOptions({ displayName: 'Ana', age: null, tone: 'family' });
+    expect(rendered.every((o) => !o.text.includes('{age}'))).toBe(true);
+  });
+});
+
+describe('DEFAULT_TONE', () => {
+  it('is a tone that has at least one template needing no age', () => {
+    // The screen falls back to this for anyone whose tone was never set, including people
+    // with no birth year — so it must never open on an empty list.
+    expect(
+      messageOptions({ displayName: 'Ana', age: null, tone: DEFAULT_TONE }).length,
+    ).toBeGreaterThan(0);
   });
 });

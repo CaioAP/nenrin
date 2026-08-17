@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
@@ -38,7 +38,14 @@ export function BirthdayFields({
   // enterable. A day already chosen that the new month cannot hold is cleared rather than
   // silently coerced to the 28th.
   const daysInMonth = value.month === null ? 31 : value.month === 2 ? 29 : monthLength(value.month);
-  const days = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth]);
+  const days = useMemo(
+    () => Array.from({ length: daysInMonth }, (_, i) => ({ value: i + 1, label: String(i + 1) })),
+    [daysInMonth],
+  );
+  const months = useMemo(
+    () => MONTH_NAMES.map((name, index) => ({ value: index + 1, label: name.slice(0, 3) })),
+    [],
+  );
 
   const selectMonth = (month: number) => {
     const keepsDay = value.day !== null && isValidMonthDay(month, value.day);
@@ -48,36 +55,14 @@ export function BirthdayFields({
   return (
     <View style={styles.container}>
       <ThemedText type="smallBold">Month</ThemedText>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.row}
-      >
-        {MONTH_NAMES.map((name, index) => (
-          <Chip
-            key={name}
-            label={name.slice(0, 3)}
-            selected={value.month === index + 1}
-            onPress={() => selectMonth(index + 1)}
-          />
-        ))}
-      </ScrollView>
+      <ChipRow options={months} selected={value.month} onSelect={selectMonth} />
 
       <ThemedText type="smallBold">Day</ThemedText>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.row}
-      >
-        {days.map((day) => (
-          <Chip
-            key={day}
-            label={String(day)}
-            selected={value.day === day}
-            onPress={() => onChange({ ...value, day })}
-          />
-        ))}
-      </ScrollView>
+      <ChipRow
+        options={days}
+        selected={value.day}
+        onSelect={(day) => onChange({ ...value, day })}
+      />
 
       <ThemedText type="smallBold">Year (optional)</ThemedText>
       <TextInput
@@ -92,6 +77,74 @@ export function BirthdayFields({
         Without a year the birthday still works — you just won’t see an age.
       </ThemedText>
     </View>
+  );
+}
+
+/**
+ * A horizontal chip row that reveals its selection on open.
+ *
+ * November, or the 25th, starts well off the right edge, so an edit screen would open on a
+ * row that looks like nothing is chosen. The offset cannot be computed — a chip is as wide
+ * as its label, so 1 and 25 are different sizes — so the selected chip reports its own `x`
+ * and the row scrolls there once.
+ */
+function ChipRow({
+  options,
+  selected,
+  onSelect,
+}: {
+  options: { value: number; label: string }[];
+  selected: number | null;
+  onSelect: (value: number) => void;
+}) {
+  const scroll = useRef<ScrollView>(null);
+  const selectedX = useRef<number | null>(null);
+  const measured = useRef(false);
+  const revealed = useRef(false);
+
+  // Waits on both facts, because either can arrive first: a `scrollTo` issued before the row
+  // has measured its content is dropped by Android with no error. Whichever callback lands
+  // second does the scroll.
+  //
+  // One-shot after that — the row is then the user's, and re-running it on every selection
+  // would yank it out from under a finger mid-scroll.
+  const reveal = () => {
+    if (revealed.current || selectedX.current === null || !measured.current) return;
+    revealed.current = true;
+    scroll.current?.scrollTo({
+      x: Math.max(0, selectedX.current - Spacing.three),
+      animated: false,
+    });
+  };
+
+  return (
+    <ScrollView
+      ref={scroll}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.row}
+      onContentSizeChange={() => {
+        measured.current = true;
+        reveal();
+      }}
+    >
+      {options.map((option) => (
+        <Chip
+          key={option.value}
+          label={option.label}
+          selected={selected === option.value}
+          onPress={() => onSelect(option.value)}
+          onLayout={
+            selected === option.value
+              ? (event) => {
+                  selectedX.current = event.nativeEvent.layout.x;
+                  reveal();
+                }
+              : undefined
+          }
+        />
+      ))}
+    </ScrollView>
   );
 }
 

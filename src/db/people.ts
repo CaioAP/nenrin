@@ -14,6 +14,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'expo-crypto';
 
 import { makePartialDate } from '@/domain/birthday';
+import type { Tone } from '@/domain/message';
 import { type Person, resolveLeadDays } from '@/domain/person';
 import type { Schedulable } from '@/domain/schedule';
 import { DEFAULT_SETTINGS } from '@/domain/settings';
@@ -65,6 +66,33 @@ export async function updatePerson(
   const [updated] = await db
     .update(person)
     .set(toPersonUpdate(patch, now))
+    .where(and(eq(person.id, id), alive))
+    .returning();
+  return updated ? toPerson(updated) : null;
+}
+
+/**
+ * Sets the relationship tone. Returns the person as stored, or null if they are gone.
+ *
+ * Separate from `updatePerson` rather than another key on `PersonPatch`: tone has nothing to
+ * do with the birthday, and keeping it narrow means the one write the message screen makes
+ * is a write nobody has to read `toPersonUpdate` to understand.
+ *
+ * Deliberately does not bump `updatedAt`. `updatedAt` is what `Schedulable.knownSince`
+ * reads, and `armWindow`'s catch-up branch treats a `knownSince` later than a reminder's
+ * ideal moment as licence to re-arm it — that licence does not expire for that occurrence.
+ * A tone change is not a schedule change, so letting it touch `updatedAt` would convert a
+ * reminder that already fired into one that fires again on every remaining day up to the
+ * birthday (see `schedule.test.ts`, `'re-arms every remaining morning once knownSince moves
+ * past the lead moment'`). v2's backup queue will need its own dirty flag rather than
+ * reading `updatedAt` for this reason — `updatePerson` has the identical problem for a note
+ * edit, and the durable fix for both is a separate `scheduleChangedAt` column that only
+ * schedule-relevant writes touch.
+ */
+export async function setTone(id: string, tone: Tone): Promise<Person | null> {
+  const [updated] = await db
+    .update(person)
+    .set({ tone })
     .where(and(eq(person.id, id), alive))
     .returning();
   return updated ? toPerson(updated) : null;

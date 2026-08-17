@@ -12,16 +12,26 @@ import { Platform } from 'react-native';
  * OKLCH source: light `oklch(0.42 0.09 252)`, dark `oklch(0.62 0.10 250)`. React Native
  * cannot parse `oklch()`, so these are the exact sRGB conversions, not eyeballed hex.
  *
+ * The dark surfaces are the same tokens caioalfonso.dev uses under its indigo accent, which
+ * tints the neutrals toward the accent hue rather than sitting on black:
+ * `oklch(0.235 0.008 240)`, `oklch(0.275 0.008 240)`, `oklch(0.36 0.010 240)`. Converted from
+ * OKLCH exactly, like `tint` — the blue is meant to be felt, not seen.
+ *
  * Every pair below is measured, because the greys alone could not carry selection state:
  * `backgroundSelected` against `background` is only 1.31:1 in light mode, which reads as
  * "nothing is selected".
  *
- *   tint on background   light 8.45:1   dark 5.78:1
+ *   tint on background   light 8.45:1   dark 4.57:1
  *   onTint on tint       light 8.45:1   dark 5.78:1
- *   danger on background light 6.54:1   dark 12.30:1
+ *   danger on background light 6.54:1   dark 9.72:1
+ *   text on background   light 21.00:1  dark 16.59:1
  *
  * `onTint` is black in dark mode on purpose: white on the lighter indigo is 3.63:1 and
  * fails AA. The rule is to pick the label colour that passes, not the one that looks tidy.
+ *
+ * Lifting `background` off black cost `tint` its old 5.78:1 — 4.57:1 still clears AA, but
+ * it is now the tightest pair in the app. Darkening `background` further is the lever if a
+ * future accent needs the room.
  */
 export const Colors = {
   light: {
@@ -36,9 +46,9 @@ export const Colors = {
   },
   dark: {
     text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
+    background: '#1b1f22',
+    backgroundElement: '#24282b',
+    backgroundSelected: '#393e42',
     textSecondary: '#B0B4BA',
     tint: '#558ac0',
     onTint: '#000000',

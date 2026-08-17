@@ -7,6 +7,7 @@
  */
 
 import { type LeapDayPolicy, makePartialDate } from '@/domain/birthday';
+import type { Tone } from '@/domain/message';
 import type { Person } from '@/domain/person';
 import { type AppSettings, DEFAULT_SETTINGS } from '@/domain/settings';
 import type { NewPersonRow, PersonRow, SettingsRow } from './schema';
@@ -18,6 +19,7 @@ export type NewPerson = {
   notes?: string | null;
   leadDays?: number | null;
   muted?: boolean;
+  tone?: Tone | null;
   source?: Person['source'];
   externalId?: string | null;
 };
@@ -37,6 +39,7 @@ export function toPerson(row: PersonRow): Person {
     notes: row.notes,
     leadDays: row.leadDays,
     muted: row.muted,
+    tone: row.tone,
     source: row.source,
     externalId: row.externalId,
     createdAt: row.createdAt,
@@ -81,6 +84,7 @@ export function toNewPersonRow(input: NewPerson, id: string, at: Date): NewPerso
     notes: input.notes ?? null,
     leadDays: input.leadDays ?? null,
     muted: input.muted ?? false,
+    tone: input.tone ?? null,
     source: input.source ?? 'manual',
     externalId: input.externalId ?? null,
     createdAt: at,

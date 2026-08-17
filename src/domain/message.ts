@@ -77,8 +77,26 @@ export function renderTemplate(text: string, vars: MessageVars): string {
     .replaceAll('{age}', vars.age === null ? '' : String(vars.age));
 }
 
-/** Every message that can be rendered for this person and tone, in a stable order. */
-export function messagesFor({
+/**
+ * The tone a person opens on before anyone has chosen one for them.
+ *
+ * Applied on read rather than written into the column, so "never chosen" stays
+ * distinguishable from "deliberately close" — which is what lets a future groups-derived
+ * tone fill in only where the user has not decided.
+ */
+export const DEFAULT_TONE: Tone = 'close';
+
+/** A rendered message and the template it came from. */
+export type MessageOption = { id: string; text: string };
+
+/**
+ * Every message that can be rendered for this person and tone, in a stable order.
+ *
+ * The id travels with the text because the screen lets you pick one message and then edit
+ * it. An array index would be a fine handle right up until the tone changes underneath it,
+ * at which point it silently points at a different message.
+ */
+export function messageOptions({
   displayName,
   age,
   tone,
@@ -86,10 +104,19 @@ export function messagesFor({
   displayName: string;
   age: number | null;
   tone: Tone;
-}): string[] {
+}): MessageOption[] {
   const name = firstNameOf(displayName);
 
   return TEMPLATES.filter((t) => t.tone === tone)
     .filter((t) => !t.needsAge || age !== null)
-    .map((t) => renderTemplate(t.text, { name, age }));
+    .map((t) => ({ id: t.id, text: renderTemplate(t.text, { name, age }) }));
+}
+
+/** The same messages as plain strings, for callers with nothing to select. */
+export function messagesFor(args: {
+  displayName: string;
+  age: number | null;
+  tone: Tone;
+}): string[] {
+  return messageOptions(args).map((option) => option.text);
 }

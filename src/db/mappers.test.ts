@@ -16,6 +16,7 @@ const row = (overrides: Partial<PersonRow> = {}): PersonRow => ({
   muted: false,
   source: 'manual',
   externalId: null,
+  tone: null,
   createdAt: at,
   updatedAt: at,
   deletedAt: null,
@@ -165,5 +166,37 @@ describe('toPersonUpdate', () => {
     expect('source' in update).toBe(false);
     expect('externalId' in update).toBe(false);
     expect('createdAt' in update).toBe(false);
+  });
+});
+
+describe('tone', () => {
+  it('carries a stored tone through to the domain', () => {
+    expect(toPerson(row({ tone: 'family' })).tone).toBe('family');
+  });
+
+  it('keeps an unset tone as null rather than defaulting at the boundary', () => {
+    // DEFAULT_TONE is applied where the messages are shown, not here. Writing a default
+    // into the row would make "never chosen" indistinguishable from a real choice.
+    expect(toPerson(row({ tone: null })).tone).toBeNull();
+  });
+
+  it('defaults a new person to no tone', () => {
+    const created = toNewPersonRow(
+      { displayName: 'Ana', birthday: { month: 3, day: 14 } },
+      'p2',
+      at,
+    );
+
+    expect(created.tone).toBeNull();
+  });
+
+  it('lets a caller set a tone at creation', () => {
+    const created = toNewPersonRow(
+      { displayName: 'Ana', birthday: { month: 3, day: 14 }, tone: 'colleague' },
+      'p2',
+      at,
+    );
+
+    expect(created.tone).toBe('colleague');
   });
 });

@@ -13,6 +13,7 @@ const person = (displayName: string, month: number, day: number, year?: number):
   notes: null,
   leadDays: null,
   muted: false,
+  tone: null,
   source: 'manual',
   externalId: null,
   createdAt: at(2026, 1, 1),

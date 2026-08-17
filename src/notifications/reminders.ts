@@ -52,8 +52,11 @@ let loading: Promise<NotificationsModule | null> | null = null;
  * notifications genuinely do work in a development build; Expo Go simply cannot load the
  * package at all. Everything else in the app is unaffected, which is the behaviour we want
  * anyway — reminders are an enhancement, not a precondition for tracking a birthday.
+ *
+ * Exported so the tap handler can reach the module through the same guard. Nothing else
+ * may import `expo-notifications` directly.
  */
-function loadNotifications(): Promise<NotificationsModule | null> {
+export function loadNotifications(): Promise<NotificationsModule | null> {
   loading ??= (async () => {
     if (isRunningInExpoGo()) return null;
     return await import('expo-notifications');
