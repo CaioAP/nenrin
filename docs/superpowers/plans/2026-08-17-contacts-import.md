@@ -158,7 +158,9 @@ Run: `npm run check && npm run lint`
 Expected: both clean.
 
 Run: `npx expo export --platform android --output-dir /tmp/nenrin-export`
-Expected: exit 0. This is the gate that catches a module-scope import problem before the device does.
+Expected: exit 0.
+
+This proves the module resolves and bundles. It does **not** prove the module-scope import is safe — AGENTS.md records that `check`, `lint`, `test` and `expo export` all passed while the analogous `expo-notifications` import was crashing the app at launch. Only Step 7 on a real device answers that.
 
 - [ ] **Step 6: Commit**
 
