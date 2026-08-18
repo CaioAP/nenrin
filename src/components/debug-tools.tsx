@@ -1,6 +1,6 @@
 import * as Contacts from 'expo-contacts';
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { addSamplePeople, removeSamplePeople } from '@/db/sample-people';
@@ -123,13 +123,41 @@ function DebugPanel() {
 const PROBE_SAMPLE_LIMIT = 10;
 
 /**
+ * Android's native `ContactField` enum has no `BIRTHDAY` member — it is one of exactly two
+ * (with `NON_GREGORIAN_BIRTHDAY`) that the TypeScript enum declares and
+ * `android/.../records/fields/ContactField.kt` omits. Requesting it does not degrade to an
+ * empty field: argument conversion fails and the whole `getAllDetails` call rejects with
+ * `Couldn't convert 'birthday' to ContactField`. So the field list itself is a platform fork,
+ * separate from the fork over where the birthday then turns up.
+ *
+ * The four fields that Kotlin file marks "iOS only" are present in the enum and convert
+ * fine — they just return nothing. Only the two birthday members are absent.
+ */
+const PROBE_FIELDS = {
+  ios: [
+    Contacts.ContactField.FULL_NAME,
+    Contacts.ContactField.BIRTHDAY,
+    Contacts.ContactField.DATES,
+  ],
+  android: [Contacts.ContactField.FULL_NAME, Contacts.ContactField.DATES],
+} as const;
+
+/** The subset of a contact this probe reads, whichever field list produced it. */
+type ProbedContact = {
+  fullName?: string | null;
+  birthday?: Contacts.ContactDate | null;
+  dates?: readonly Contacts.ExistingDate[];
+};
+
+/**
  * Dumps what the platform actually returns for birthdays, because the SDK types cannot say.
  *
  * `dates[].label` is typed as a bare string and documented with "birthday" only as an
- * example, so on Android there is no way to know from the docs whether the label is a fixed
- * English constant or the device locale's word. Guessing fails silently: an unmatched label
- * makes a contact look like it has no birthday, which is indistinguishable from one that
- * genuinely has none.
+ * example. The module's own Kotlin says it is the fixed English word — `EventLabelMapper`
+ * maps `Event.TYPE_BIRTHDAY` to the literal `"birthday"` regardless of locale — but that is
+ * a prediction from reading a dependency's source, and the matcher is worth more than the
+ * prediction. Guessing wrong fails silently: an unmatched label makes a contact look like it
+ * has no birthday, which is indistinguishable from one that genuinely has none.
  *
  * Reports only contacts carrying at least one date — a contact with none says nothing about
  * labelling — and caps the sample, because the question is what the strings look like and
@@ -141,11 +169,9 @@ async function probeContacts(): Promise<string> {
     return `Permission not granted (accessPrivileges: ${permission.accessPrivileges ?? 'unknown'})`;
   }
 
-  const contacts = await Contacts.Contact.getAllDetails([
-    Contacts.ContactField.FULL_NAME,
-    Contacts.ContactField.BIRTHDAY,
-    Contacts.ContactField.DATES,
-  ]);
+  const contacts: readonly ProbedContact[] = await (Platform.OS === 'ios'
+    ? Contacts.Contact.getAllDetails(PROBE_FIELDS.ios)
+    : Contacts.Contact.getAllDetails(PROBE_FIELDS.android));
 
   const withDates = contacts.filter(
     (contact) => contact.birthday != null || (contact.dates?.length ?? 0) > 0,
@@ -159,7 +185,7 @@ async function probeContacts(): Promise<string> {
   });
 
   return [
-    `accessPrivileges: ${permission.accessPrivileges ?? 'unknown'}`,
+    `${Platform.OS}, accessPrivileges: ${permission.accessPrivileges ?? 'unknown'}`,
     `${withDates.length} of ${contacts.length} contacts carry a date`,
     '',
     ...lines,

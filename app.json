@@ -43,7 +43,8 @@
         {
           "color": "#244f7c"
         }
-      ]
+      ],
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,

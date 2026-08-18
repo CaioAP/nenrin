@@ -80,6 +80,19 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   and you get `Route "./_layout.tsx" is missing the required default export` followed by
   `Cannot read property 'ErrorBoundary' of undefined`. `check`, `lint`, `test` and
   `expo export` all pass with this bug present.
+- **Android rejects `ContactField.BIRTHDAY`, and takes the whole call down with it.**
+  `expo-contacts` declares one `ContactField` enum for both platforms, but the Android native
+  enum (`android/.../records/fields/ContactField.kt`) omits exactly two members: `BIRTHDAY`
+  and `NON_GREGORIAN_BIRTHDAY`. Requesting one does not come back empty — argument conversion
+  fails and `Contact.getAllDetails` rejects the entire query with `Couldn't convert 'birthday'
+  to ContactField`, so zero contacts are read. **The field list is itself a platform fork**,
+  separate from the fork over where a birthday then turns up (`birthday` on iOS, a `dates`
+  entry labelled `"birthday"` on Android — a fixed English literal from `EventLabelMapper`,
+  not the device locale). The four fields that file marks "iOS only" are present in the enum
+  and convert fine; they just return nothing. Nothing in the TypeScript types says any of
+  this: `check`, `lint` and `expo export` all pass, and the failure is a runtime rejection on
+  a device.
+
 - **Migrations need `metro.config.js` *and* `babel.config.js`, both.** `./drizzle/migrations.js`
   imports each migration as a `.sql` file. Metro must resolve the extension
   (`sourceExts.push('sql')`) *and* `babel-plugin-inline-import` must inline it as a string —
