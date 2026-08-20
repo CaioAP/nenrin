@@ -68,15 +68,24 @@ describe('partitionCandidates', () => {
     expect(total).toBe(candidates.length);
   });
 
-  it('preserves the order the source returned', () => {
+  it('preserves the order the source returned, in every bucket', () => {
+    // All three, not just `ready`. The triage deck renders `needsBirthday` as a card stack,
+    // so its order is what the user actually walks through — a bucket whose order is only
+    // incidentally correct is one refactor away from shuffling the deck.
     const result = partitionCandidates(
       [
         candidate({ externalId: 'a', displayName: 'Ana' }),
+        candidate({ externalId: 'known-1', displayName: 'Known One' }),
+        candidate({ externalId: 'n1', displayName: 'No Date One', birthday: null }),
         candidate({ externalId: 'b', displayName: 'Bruno' }),
+        candidate({ externalId: 'n2', displayName: 'No Date Two', birthday: null }),
+        candidate({ externalId: 'known-2', displayName: 'Known Two' }),
       ],
-      nothingHandled,
+      { imported: new Set(['known-1', 'known-2']), skipped: new Set() },
     );
     expect(result.ready.map((c) => c.displayName)).toEqual(['Ana', 'Bruno']);
+    expect(result.needsBirthday.map((c) => c.displayName)).toEqual(['No Date One', 'No Date Two']);
+    expect(result.alreadyKnown.map((c) => c.displayName)).toEqual(['Known One', 'Known Two']);
   });
 
   it('handles an empty scan', () => {

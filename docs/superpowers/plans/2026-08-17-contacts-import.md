@@ -605,7 +605,9 @@ describe('partitionCandidates', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npm test -- domain/import`
-Expected: FAIL — `partitionCandidates` is not exported.
+Expected: FAIL — 8 tests collected, all 8 failing with `TypeError: partitionCandidates is not a function`.
+
+Note the exact wording, because it is not what you might predict. `src/domain/import.ts` already exists and holds types only, so esbuild strips it to an empty namespace: the import *resolves* and yields `undefined` rather than erroring at module resolution. Read the collected count too — 8 failing on that symbol is the red you want; "no test files found" is a silently green suite wearing a costume.
 
 - [ ] **Step 3: Implement the partitioner**
 
@@ -664,7 +666,7 @@ Run: `npm test -- domain/import`
 Expected: PASS, all 8.
 
 Run: `npm test`
-Expected: the full suite green — 207 existing plus the new ones.
+Expected: the full suite green — 228, being the 220 that passed before this task plus these 8.
 
 - [ ] **Step 5: Commit**
 
