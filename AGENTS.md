@@ -93,6 +93,17 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   this: `check`, `lint` and `expo export` all pass, and the failure is a runtime rejection on
   a device.
 
+- **`expo-contacts` disagrees with its own types in two places, and both typecheck.**
+  `ContactsPermissionResponse.accessPrivileges` is declared optional and is `undefined` on
+  Android and pre-iOS-18 — it is an iOS 18 concept and appears nowhere in the Android native
+  source. Returning it raw from anything typed `AccessLevel` hands back `undefined`; `tsc`
+  accepts it and every caller's `switch` falls through. Map it: `accessPrivileges ?? (granted
+  ? 'all' : 'none')`. Separately, `ContactDate.year` is typed `year?: number`, but a device
+  really sends `{"day":13,"month":4,"year":null}` — so any type derived from `ContactDate`
+  will reject a fixture built from what the platform actually returns. `makePartialDate`
+  takes `year?: number | null` for this reason; do not narrow it. `month` **is** 1–12 as
+  documented, confirmed against contacts entered as 13 April and 13 June.
+
 - **Migrations need `metro.config.js` *and* `babel.config.js`, both.** `./drizzle/migrations.js`
   imports each migration as a `.sql` file. Metro must resolve the extension
   (`sourceExts.push('sql')`) *and* `babel-plugin-inline-import` must inline it as a string —
@@ -132,6 +143,15 @@ this lockfile with `EBADPLATFORM @esbuild/aix-ppc64`. npm 11 accepts it. The sam
 already broke GitHub Actions, which is why CI is pinned to Node 24 and `engines.node` is
 `>= 24`. Do not drop the pin from a new profile.
 
+**iOS limited access may read as denial, depending on the Swift toolchain.** `expo-contacts`'
+`ContactsRequester.swift` maps `.limited` to a *granted* status carrying `scope: "limited"`,
+which is what makes `requestAccess()` safe to short-circuit on `!granted` before reading
+`accessPrivileges`. But that mapping sits behind `#if compiler(>=6)`. Built with an older
+Swift compiler, `.limited` falls through to `@unknown default` and reports undetermined — so
+a user who granted access to a hand-picked subset looks exactly like a user who refused.
+No iOS build exists yet to say which branch a real build takes. Check this before trusting
+limited access on iOS 18+; it is a property of how the pod was compiled, not of app code.
+
 **iOS needs usage-description strings before it can ship.** `expo-contacts`,
 `expo-calendar` and `expo-notifications` contribute their Android permissions through
 autolinked manifests, so an Android build works with no config plugin entries at all. iOS
@@ -147,6 +167,14 @@ three and still fail at runtime. Bundle it too:
 ```bash
 npx expo export --platform android --output-dir /tmp/nenrin-export
 ```
+
+**And know what that gate does not cover: `expo export` bundles only what is reachable from
+`src/app/`'s entry graph.** A module nothing imports yet is never resolved, so its export
+passes vacuously — green, and evidence of nothing. This bit twice in one branch: `src/sources/
+contacts.ts` and `src/db/skipped.ts` both passed the gate while no route reached either.
+Before treating a green export as proof a new file bundles, confirm something under
+`src/app/` actually imports it, transitively. Grepping the emitted `.hbc` for a string
+unique to the file settles it in one command.
 
 ## Commands
 

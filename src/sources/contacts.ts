@@ -68,6 +68,12 @@ export const contactsSource: BirthdaySource = {
    * four hundred bridge crossings to answer one question. This asks once.
    */
   async fetchCandidates(): Promise<ImportCandidate[]> {
+    // Two call sites on purpose. Do not collapse this to
+    // `getAllDetails(isIos ? FIELDS.ios : FIELDS.android)`: `getAllDetails` is generic over
+    // the exact tuple it is handed, so a ternary makes `T` the *union* of both tuples,
+    // `T[number]` the union of all five members, and the result type claims `birthday` is
+    // present on Android — where it was never requested. That version typechecks, lints,
+    // tests and bundles. It is simply wrong.
     const contacts = await (Platform.OS === 'ios'
       ? Contacts.Contact.getAllDetails(FIELDS.ios)
       : Contacts.Contact.getAllDetails(FIELDS.android));

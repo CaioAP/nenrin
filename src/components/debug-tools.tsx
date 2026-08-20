@@ -251,9 +251,14 @@ async function scanContacts(): Promise<string> {
 
   const withBirthday = ready
     .slice(0, SCAN_SAMPLE_LIMIT)
-    .map((candidate) => {
-      const { month, day, year } = candidate.birthday ?? { month: 0, day: 0, year: null };
-      return `  ${candidate.displayName} — ${day}/${month}${year ? `/${year}` : ''}`;
+    .flatMap((candidate) => {
+      // `ready` is defined by having a birthday, so this never drops anything. It is a
+      // flatMap rather than a `?? { month: 0 }` fallback because a fallback that fired
+      // would print 0/0 as though it were data the phone gave us.
+      const birthday = candidate.birthday;
+      if (!birthday) return [];
+      const { month, day, year } = birthday;
+      return [`  ${candidate.displayName} — ${day}/${month}${year ? `/${year}` : ''}`];
     })
     .join('\n');
 
