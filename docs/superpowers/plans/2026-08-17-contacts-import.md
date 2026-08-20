@@ -363,7 +363,7 @@ Four things that settles, all of which the code below already assumes correctly:
 
 - The label is the literal `"birthday"` on an English-locale Android device, matching what `EventLabelMapper` does in the module's Kotlin (a hardcoded literal, never a resource lookup — so it is locale-independent, though this device cannot prove that half).
 - `birthday` is `undefined` on Android, as the iOS-only annotation implies.
-- `month` is 1–12. Both samples parse as real months.
+- `month` is 1–12 — **on the authority of the source read, not these samples.** `EventMapper.toDto` calls `.toInt()` on the `MM` substring of an ISO `--MM-DD` / `YYYY-MM-DD` string, and the SDK doc says "format 1-12". The two samples do *not* independently confirm it: 4 and 6 parse as real months under a zero-based reading too. An off-by-one here would put every imported birthday one month early, silently and forever, so it is called out rather than assumed away.
 - **`year` comes back as an explicit `null`, not `undefined` — which the SDK's own type (`year?: number`) says is impossible.** Harmless here only because `makePartialDate(month, day, year?: number | null)` accepts both and normalises with `year ?? null`. Do not "simplify" that signature to `number | undefined` on the strength of the SDK type; the device disagrees with it.
 
 Do not add locale strings you have not seen on a device — an unverified guess is the thing this design deliberately avoided.
@@ -378,17 +378,38 @@ Do not add locale strings you have not seen on a device — an unverified guess 
  * are erased — so both platforms are testable on a machine that is neither.
  */
 
-import type { ContactDate, ContactDetails } from 'expo-contacts';
+import type { ContactDetails } from 'expo-contacts';
 
 import type { PartialDate } from '@/domain/birthday';
 import { makePartialDate } from '@/domain/birthday';
 import type { ImportCandidate } from '@/domain/import';
 
-/** Exactly the fields `contacts.ts` requests, so the two cannot drift apart silently. */
+/**
+ * A date as the device really sends it.
+ *
+ * The SDK types `ContactDate.year` as `year?: number`, so `null` is supposedly impossible.
+ * The probe read `{"day":13,"month":4,"year":null}` off an Android phone. Where the platform
+ * and its own types disagree, this boundary believes the platform — narrowing this back to
+ * `number | undefined` on the strength of the SDK type would be a regression that typechecks.
+ */
+type ContactInputDate = { year?: number | null; month: number; day: number };
+
+/**
+ * The fields `contacts.ts` requests. Names are borrowed from `ContactDetails` so the two
+ * cannot drift apart silently; the date-carrying fields are redeclared, because those are
+ * exactly where the SDK's types are wrong.
+ *
+ * These are wider than what `getAllDetails` returns, which is the right direction: Task 5
+ * passes a real `PartialContactDetails` straight into `mapContact`, and that call is what
+ * proves the two still fit together.
+ */
 export type ContactInput = { id: string } & Pick<
   ContactDetails,
-  'fullName' | 'givenName' | 'familyName' | 'birthday' | 'dates'
->;
+  'fullName' | 'givenName' | 'familyName'
+> & {
+    birthday?: ContactInputDate | null;
+    dates?: readonly { label?: string; date?: ContactInputDate | null }[];
+  };
 
 /**
  * Observed on a device, not guessed. See the probe in `debug-tools.tsx` — an unmatched label
@@ -431,7 +452,7 @@ function displayNameOf(contact: ContactInput): string | null {
  * over a single row, so an unusable date becomes "ask the user" instead.
  */
 function birthdayOf(contact: ContactInput): PartialDate | null {
-  const raw: ContactDate | undefined = contact.birthday ?? findBirthdayDate(contact);
+  const raw = contact.birthday ?? findBirthdayDate(contact);
   if (!raw) return null;
 
   try {
@@ -441,14 +462,14 @@ function birthdayOf(contact: ContactInput): PartialDate | null {
   }
 }
 
-function findBirthdayDate(contact: ContactInput): ContactDate | undefined {
+function findBirthdayDate(contact: ContactInput): ContactInputDate | null | undefined {
   return contact.dates?.find(
     (entry) => entry.label !== undefined && BIRTHDAY_LABELS.has(entry.label.trim().toLowerCase()),
   )?.date;
 }
 ```
 
-`contact.birthday` is typed `ContactDate | null`, so `??` falls through on null. Confirm that against the installed types if the compiler disagrees.
+`contact.birthday` is `ContactInputDate | null | undefined`, so `??` falls through on both. `BIRTHDAY_LABELS` is `new Set(['birthday'])` — the observed value, not a guess.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -843,16 +864,34 @@ import { type ContactInput, mapContact } from './map-contact';
 import type { AccessLevel, BirthdaySource } from './types';
 
 /**
- * Exactly the fields `ContactInput` declares. Asking for less would leave a field undefined
- * at runtime that the type says is present.
+ * The fields `ContactInput` declares — but the list is a platform fork, and getting this
+ * wrong does not degrade gracefully.
+ *
+ * Android's native `ContactField` enum omits exactly two members the TypeScript enum
+ * declares: `BIRTHDAY` and `NON_GREGORIAN_BIRTHDAY`. Requesting `BIRTHDAY` on Android does
+ * not return an empty field — argument conversion fails and the whole `getAllDetails` call
+ * rejects with `Couldn't convert 'birthday' to ContactField`, so **zero contacts are read**.
+ * Observed on a device; `check`, `lint` and `expo export` all pass with the bug present.
+ *
+ * Android carries its birthday as a `dates` entry labelled `"birthday"` instead, which is
+ * what `map-contact.ts` reads. The fork stops here — it must not reach the mapper, which is
+ * pure precisely so both platforms are testable on a machine that is neither.
  */
-const FIELDS = [
-  Contacts.ContactField.FULL_NAME,
-  Contacts.ContactField.GIVEN_NAME,
-  Contacts.ContactField.FAMILY_NAME,
-  Contacts.ContactField.BIRTHDAY,
-  Contacts.ContactField.DATES,
-] as const;
+const FIELDS = {
+  ios: [
+    Contacts.ContactField.FULL_NAME,
+    Contacts.ContactField.GIVEN_NAME,
+    Contacts.ContactField.FAMILY_NAME,
+    Contacts.ContactField.BIRTHDAY,
+    Contacts.ContactField.DATES,
+  ],
+  android: [
+    Contacts.ContactField.FULL_NAME,
+    Contacts.ContactField.GIVEN_NAME,
+    Contacts.ContactField.FAMILY_NAME,
+    Contacts.ContactField.DATES,
+  ],
+} as const;
 
 export const contactsSource: BirthdaySource = {
   id: 'contacts',
@@ -864,7 +903,10 @@ export const contactsSource: BirthdaySource = {
   async requestAccess(): Promise<AccessLevel> {
     const permission = await Contacts.requestPermissionsAsync();
     if (!permission.granted) return 'none';
-    // Pre-iOS-18 and Android report no privileges at all; a plain grant is full access.
+    // `accessPrivileges` is undefined on Android and pre-iOS-18 — the probe printed
+    // "accessPrivileges: unknown" on a device where permission had just been granted.
+    // Returning it raw would hand back `undefined` from a function typed `AccessLevel`:
+    // tsc accepts it and every caller's switch falls through. A plain grant is full access.
     return permission.accessPrivileges ?? 'all';
   },
 
@@ -874,7 +916,9 @@ export const contactsSource: BirthdaySource = {
    * four hundred bridge crossings to answer one question. This asks once.
    */
   async fetchCandidates(): Promise<ImportCandidate[]> {
-    const contacts = await Contacts.Contact.getAllDetails(FIELDS);
+    const contacts = await (Platform.OS === 'ios'
+      ? Contacts.Contact.getAllDetails(FIELDS.ios)
+      : Contacts.Contact.getAllDetails(FIELDS.android));
 
     return contacts
       .map((contact) => mapContact(contact as ContactInput))
@@ -928,7 +972,11 @@ No code. The checks only a device can answer, from the spec's verification secti
 
 - [ ] **Check 1: A scan produces plausible candidates**
 
-Temporarily call `contactsSource.requestAccess()` then `contactsSource.fetchCandidates()` from the debug panel and report `length` plus the first few names. Compare against an address book you know. Remove the temporary button afterwards, or keep it — it is `__DEV__` only.
+Temporarily call `contactsSource.requestAccess()` then `contactsSource.fetchCandidates()` from the debug panel and report `length` plus the first few names. Remove the temporary button afterwards, or keep it — it is `__DEV__` only.
+
+**Expect a large candidate count and almost no birthdays, and read that as a pass.** The probe on the development device found 2 contacts carrying a date out of 433 — and both of those were set by hand for the probe itself. The real number is zero. So "candidates come back, nearly all with `birthday: null`" is the correct result on this phone, not a failed check. What would be a failure is `length` near zero, or a rejected promise.
+
+That near-empty address book is also a product signal worth carrying out of this step: if Contacts holds no birthdays but the Calendar app's auto-generated "Birthdays" calendar does, calendar import (step 7) may out-earn contacts import (step 5) for this user. One address book does not re-rank the roadmap, but the question stays open.
 
 - [ ] **Check 2: Denial is a value, not a crash**
 
@@ -936,7 +984,9 @@ Revoke contacts permission in Android settings, relaunch, run the scan. Expected
 
 - [ ] **Check 3: Birthdays actually come through**
 
-At least one contact you know has a birthday appears with a non-null `birthday` and the right month and day. This is the check that catches a wrong `BIRTHDAY_LABELS` — if every candidate comes back with a null birthday on Android, the label is not what Task 1 recorded.
+The contacts whose birthdays were set by hand during Task 1 appear with a non-null `birthday` and the right month and day. This is the check that catches a wrong `BIRTHDAY_LABELS` — if they come back null on Android, the label is not what Task 1 recorded.
+
+**It is also the check that settles the month base.** Confirm the month against what was actually typed into the Contacts app: 4 must mean April, not May. The Kotlin says 1–12 and the SDK docs agree, but the Task 1 samples cannot prove it on their own — 4 and 6 are real months under a zero-based reading too, and an off-by-one would move every imported birthday a month early, silently and permanently.
 
 - [ ] **Check 4: The probe's finding is still true**
 
