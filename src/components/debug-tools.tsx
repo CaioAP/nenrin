@@ -3,9 +3,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
+import { listExternalIdsBySource } from '@/db/people';
 import { addSamplePeople, removeSamplePeople } from '@/db/sample-people';
+import { listSkippedExternalIds } from '@/db/skipped';
+import { partitionCandidates } from '@/domain/import';
 import { useForegroundTime } from '@/hooks/use-foreground-time';
 import { countPending, scheduleTestReminder } from '@/notifications/reminders';
+import { contactsSource } from '@/sources/contacts';
 import { ActionButton } from './action-button';
 import { ThemedText } from './themed-text';
 
@@ -111,6 +115,12 @@ function DebugPanel() {
         onPress={() => run('Probing', probeContacts)}
       />
 
+      <ActionButton
+        label="Scan contacts for candidates"
+        disabled={busy}
+        onPress={() => run('Scanning', scanContacts)}
+      />
+
       {status ? (
         <ThemedText type="small" themeColor="textSecondary">
           {status}
@@ -203,6 +213,60 @@ async function probeContacts(): Promise<string> {
     `  ${withPhones.length} carry a phone (control — 0 here too means the read is broken)`,
     '',
     ...(lines.length > 0 ? lines : ['No dates to sample.']),
+  ].join('\n');
+}
+
+/** How many candidate names to print. Enough to recognise, few enough to read. */
+const SCAN_SAMPLE_LIMIT = 5;
+
+/**
+ * The whole import read path in one tap: adapter → mapper → partitioner, over the real
+ * database sets.
+ *
+ * This exists because every module below it was otherwise unreachable. Nothing imports
+ * `contacts.ts` or `db/skipped.ts` until the import UI is built in step 6, and an orphan
+ * module is not bundled — so `expo export` passing said nothing about either of them. This
+ * button is what makes that gate mean something, and what makes the device checks runnable
+ * before a single screen exists.
+ *
+ * Expect a large candidate count and almost no birthdays. That is the correct result on an
+ * address book that holds none, not a failure.
+ */
+async function scanContacts(): Promise<string> {
+  const access = await contactsSource.requestAccess();
+  if (access === 'none') {
+    // Not an error path. The app must stay fully usable with contacts denied.
+    return 'Access: none. Nothing scanned, nothing thrown — which is the point.';
+  }
+
+  const candidates = await contactsSource.fetchCandidates();
+  const [imported, skipped] = await Promise.all([
+    listExternalIdsBySource('contacts'),
+    listSkippedExternalIds('contacts'),
+  ]);
+  const { ready, needsBirthday, alreadyKnown } = partitionCandidates(candidates, {
+    imported,
+    skipped,
+  });
+
+  const withBirthday = ready
+    .slice(0, SCAN_SAMPLE_LIMIT)
+    .map((candidate) => {
+      const { month, day, year } = candidate.birthday ?? { month: 0, day: 0, year: null };
+      return `  ${candidate.displayName} — ${day}/${month}${year ? `/${year}` : ''}`;
+    })
+    .join('\n');
+
+  return [
+    `Access: ${access}`,
+    `${candidates.length} candidates named`,
+    `  ready: ${ready.length}`,
+    `  needsBirthday: ${needsBirthday.length}`,
+    `  alreadyKnown: ${alreadyKnown.length}`,
+    `db sets — imported: ${imported.size}, skipped: ${skipped.size}`,
+    '',
+    // Printed day/month so a month-base error is visible rather than plausible.
+    withBirthday || 'No candidate carried a birthday.',
   ].join('\n');
 }
 
