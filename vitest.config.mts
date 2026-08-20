@@ -13,7 +13,13 @@ export default defineConfig({
     // src/db is included for the pure row<->domain mappers only. Everything in src/db that
     // touches expo-sqlite lives in client.ts / people.ts and is verified on a device; the
     // mappers deliberately import neither, which is what keeps them testable here.
-    include: ['src/domain/**/*.test.ts', 'src/db/**/*.test.ts'],
+    //
+    // src/sources is included on the same terms. An adapter that imports Expo only as a
+    // *type* is erased at runtime and runs here happily — map-contact.ts is the reason the
+    // iOS/Android birthday fork is testable on a machine that is neither. Anything in
+    // src/sources with a runtime Expo/React Native import (contacts.ts) has no test file
+    // and is verified on hardware; that is deliberate, not an omission.
+    include: ['src/domain/**/*.test.ts', 'src/db/**/*.test.ts', 'src/sources/**/*.test.ts'],
     environment: 'node',
   },
   resolve: {
