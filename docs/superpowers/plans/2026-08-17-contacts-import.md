@@ -302,6 +302,16 @@ describe('mapContact', () => {
     expect(result?.birthday).toEqual({ month: 6, day: 8, year: null });
   });
 
+  it('normalises the explicit null year Android really sends', () => {
+    // The SDK types `year?: number`, so a null is supposedly impossible. The device sends
+    // one anyway — `{"day":13,"month":4,"year":null}`, straight off the probe. Asserted
+    // here because a fixture built from the types alone would never cover the real shape.
+    const result = mapContact(
+      contact({ dates: [{ id: 'd1', label: 'birthday', date: { month: 4, day: 13, year: null } }] }),
+    );
+    expect(result?.birthday).toEqual({ month: 4, day: 13, year: null });
+  });
+
   it('asks the user rather than throwing when the phone holds an impossible date', () => {
     const result = mapContact(contact({ birthday: { month: 2, day: 30 } }));
     expect(result).not.toBeNull();
@@ -340,7 +350,23 @@ Expected: FAIL — cannot resolve `./map-contact`.
 
 - [ ] **Step 4: Write the mapper**
 
-`src/sources/map-contact.ts`. **Before writing `BIRTHDAY_LABELS`, use the label Task 1 observed.** If the device reported something other than `"birthday"`, that string goes in the set. Do not add locale strings you have not seen on a device — an unverified guess is the thing this design deliberately avoided.
+`src/sources/map-contact.ts`.
+
+**The device gate is closed. `BIRTHDAY_LABELS` is `new Set(['birthday'])`, and that is observed, not guessed.** A birthday set by hand in Android's own Contacts app came back as:
+
+```
+label="birthday" date={"day":13,"month":4,"year":null}
+label="birthday" date={"day":13,"month":6,"year":1994}
+```
+
+Four things that settles, all of which the code below already assumes correctly:
+
+- The label is the literal `"birthday"` on an English-locale Android device, matching what `EventLabelMapper` does in the module's Kotlin (a hardcoded literal, never a resource lookup — so it is locale-independent, though this device cannot prove that half).
+- `birthday` is `undefined` on Android, as the iOS-only annotation implies.
+- `month` is 1–12. Both samples parse as real months.
+- **`year` comes back as an explicit `null`, not `undefined` — which the SDK's own type (`year?: number`) says is impossible.** Harmless here only because `makePartialDate(month, day, year?: number | null)` accepts both and normalises with `year ?? null`. Do not "simplify" that signature to `number | undefined` on the strength of the SDK type; the device disagrees with it.
+
+Do not add locale strings you have not seen on a device — an unverified guess is the thing this design deliberately avoided.
 
 ```ts
 /**
@@ -427,7 +453,7 @@ function findBirthdayDate(contact: ContactInput): ContactDate | undefined {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npm test -- map-contact`
-Expected: PASS, all 12.
+Expected: PASS, all 13.
 
 Run: `npm run check && npm run lint`
 Expected: both clean.
