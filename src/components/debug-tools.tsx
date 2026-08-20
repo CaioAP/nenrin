@@ -138,8 +138,13 @@ const PROBE_FIELDS = {
     Contacts.ContactField.FULL_NAME,
     Contacts.ContactField.BIRTHDAY,
     Contacts.ContactField.DATES,
+    Contacts.ContactField.PHONES,
   ],
-  android: [Contacts.ContactField.FULL_NAME, Contacts.ContactField.DATES],
+  android: [
+    Contacts.ContactField.FULL_NAME,
+    Contacts.ContactField.DATES,
+    Contacts.ContactField.PHONES,
+  ],
 } as const;
 
 /** The subset of a contact this probe reads, whichever field list produced it. */
@@ -147,6 +152,7 @@ type ProbedContact = {
   fullName?: string | null;
   birthday?: Contacts.ContactDate | null;
   dates?: readonly Contacts.ExistingDate[];
+  phones?: readonly Contacts.ExistingPhone[];
 };
 
 /**
@@ -173,9 +179,13 @@ async function probeContacts(): Promise<string> {
     ? Contacts.Contact.getAllDetails(PROBE_FIELDS.ios)
     : Contacts.Contact.getAllDetails(PROBE_FIELDS.android));
 
-  const withDates = contacts.filter(
-    (contact) => contact.birthday != null || (contact.dates?.length ?? 0) > 0,
-  );
+  const withDates = contacts.filter((contact) => (contact.dates?.length ?? 0) > 0);
+  const withBirthdayField = contacts.filter((contact) => contact.birthday != null);
+  // The control. `dates` and `phones` are both Data-table fields fetched by the same query,
+  // so phones coming back populated while dates does not means the address book genuinely
+  // holds no birthdays — as opposed to the field never being read. Without it, an empty
+  // result cannot be told apart from a broken one.
+  const withPhones = contacts.filter((contact) => (contact.phones?.length ?? 0) > 0);
 
   const lines = withDates.slice(0, PROBE_SAMPLE_LIMIT).map((contact) => {
     const dates = (contact.dates ?? [])
@@ -186,9 +196,12 @@ async function probeContacts(): Promise<string> {
 
   return [
     `${Platform.OS}, accessPrivileges: ${permission.accessPrivileges ?? 'unknown'}`,
-    `${withDates.length} of ${contacts.length} contacts carry a date`,
+    `${contacts.length} contacts`,
+    `  ${withDates.length} carry a dates[] entry`,
+    `  ${withBirthdayField.length} carry a birthday field`,
+    `  ${withPhones.length} carry a phone (control — if this is 0 too, the read is broken)`,
     '',
-    ...lines,
+    ...(lines.length > 0 ? lines : ['No dates to sample.']),
   ].join('\n');
 }
 
