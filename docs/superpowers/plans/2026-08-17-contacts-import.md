@@ -363,7 +363,7 @@ Four things that settles, all of which the code below already assumes correctly:
 
 - The label is the literal `"birthday"` on an English-locale Android device, matching what `EventLabelMapper` does in the module's Kotlin (a hardcoded literal, never a resource lookup — so it is locale-independent, though this device cannot prove that half).
 - `birthday` is `undefined` on Android, as the iOS-only annotation implies.
-- `month` is 1–12 — **on the authority of the source read, not these samples.** `EventMapper.toDto` calls `.toInt()` on the `MM` substring of an ISO `--MM-DD` / `YYYY-MM-DD` string, and the SDK doc says "format 1-12". The two samples do *not* independently confirm it: 4 and 6 parse as real months under a zero-based reading too. An off-by-one here would put every imported birthday one month early, silently and forever, so it is called out rather than assumed away.
+- **`month` is 1–12, confirmed against the dates actually typed in.** The two contacts were set to **13 April** and **13 June**, and came back as `month: 4` and `month: 6`. This needed asking, because the samples alone prove nothing — 4 and 6 are real months under a zero-based reading too — and an off-by-one would have put every imported birthday one month early, silently and permanently. It agrees with the source read: `EventMapper.toDto` calls `.toInt()` on the `MM` substring of an ISO `--MM-DD` / `YYYY-MM-DD` string, and the SDK doc says "format 1-12". No conversion is needed anywhere; `PartialDate.month` is 1–12 too.
 - **`year` comes back as an explicit `null`, not `undefined` — which the SDK's own type (`year?: number`) says is impossible.** Harmless here only because `makePartialDate(month, day, year?: number | null)` accepts both and normalises with `year ?? null`. Do not "simplify" that signature to `number | undefined` on the strength of the SDK type; the device disagrees with it.
 
 Do not add locale strings you have not seen on a device — an unverified guess is the thing this design deliberately avoided.
@@ -984,9 +984,9 @@ Revoke contacts permission in Android settings, relaunch, run the scan. Expected
 
 - [ ] **Check 3: Birthdays actually come through**
 
-The contacts whose birthdays were set by hand during Task 1 appear with a non-null `birthday` and the right month and day. This is the check that catches a wrong `BIRTHDAY_LABELS` — if they come back null on Android, the label is not what Task 1 recorded.
+The two contacts whose birthdays were set by hand during Task 1 — **13 April** and **13 June** — appear with a non-null `birthday` and exactly those month/day values. This is the check that catches a wrong `BIRTHDAY_LABELS`: if they come back null on Android, the label is not what Task 1 recorded.
 
-**It is also the check that settles the month base.** Confirm the month against what was actually typed into the Contacts app: 4 must mean April, not May. The Kotlin says 1–12 and the SDK docs agree, but the Task 1 samples cannot prove it on their own — 4 and 6 are real months under a zero-based reading too, and an off-by-one would move every imported birthday a month early, silently and permanently.
+The month base is already settled (Task 1 returned 4 and 6 for April and June, so 1–12, no conversion anywhere). What this check adds is that the whole pipeline preserves it end to end — `getAllDetails` → `mapContact` → `makePartialDate` → `ImportCandidate.birthday` — rather than only the SDK boundary being right.
 
 - [ ] **Check 4: The probe's finding is still true**
 

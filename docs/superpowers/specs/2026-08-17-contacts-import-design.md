@@ -187,8 +187,30 @@ The same read settles two smaller questions. `month` is 1–12, not 0–11 — `
 calls `.toInt()` on the `MM` substring of `ContactDate`'s `"--MM-DD"` / `"YYYY-MM-DD"`. And
 `year` is absent exactly when the row is stored in the `--MM-DD` form.
 
-That is a prediction from reading a dependency, and the matcher is worth more than a
-prediction, so **the device still confirms it before the matcher is written.**
+**Confirmed on a device.** Two birthdays set by hand in Android's own Contacts app, on an
+English-locale phone:
+
+```
+label="birthday" date={"day":13,"month":4,"year":null}
+label="birthday" date={"day":13,"month":6,"year":1994}
+```
+
+Those were entered as **13 April** and **13 June**, which is what makes `month` 1–12 rather
+than 0–11 — the numbers alone could not say, since 4 and 6 are real months either way.
+`PartialDate.month` is 1–12 as well, so no conversion happens anywhere. `birthday` is
+`undefined` on Android, as the iOS-only annotation implies.
+
+Two caveats on what this run did *not* establish. The device is English, not the pt-BR phone
+this spec first assumed, so it cannot show the label is locale-independent — only the Kotlin
+argues that, by using a hardcoded literal rather than a resource lookup. And the address book
+held **no real birthdays at all**: 0 of 433 contacts carried a date before the two were
+written for this test.
+
+**One thing the device contradicted outright.** `year` came back as an explicit `null`, while
+`ContactDate.year` is typed `year?: number` — null is supposedly impossible. Harmless only
+because `makePartialDate(month, day, year?: number | null)` accepts both. The consequence is
+that `ContactInput` cannot `Pick` its date-carrying fields from `ContactDetails`; it
+redeclares them, keeping the name fields `Pick`ed so those still cannot drift.
 
 This is a sequencing constraint, not a task ordering preference. Implementation of
 `map-contact.ts`'s Android branch is blocked until the probe has been run and its output
