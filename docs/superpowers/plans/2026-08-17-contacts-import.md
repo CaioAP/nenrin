@@ -208,7 +208,7 @@ Start the dev client, open Settings, tap **Probe contacts**, and read the output
 - Produces:
   - `ImportCandidate` = `{ externalId: string; displayName: string; birthday: PartialDate | null; source: PersonSource }` from `@/domain/import`.
   - `mapContact(contact: ContactInput): ImportCandidate | null` from `@/sources/map-contact`.
-  - `ContactInput` = `{ id: string } & Pick<ContactDetails, 'fullName' | 'givenName' | 'familyName' | 'birthday' | 'dates'>` from `@/sources/map-contact`.
+  - `ContactInput` from `@/sources/map-contact` — `{ id: string }`, the three name fields `Pick`ed from `ContactDetails`, and `birthday`/`dates` **redeclared** over a local `ContactInputDate` with `year?: number | null`. See Step 4 for the exact shape and the reason. Do not "restore" the two date fields to `Pick<ContactDetails, ...>`: the SDK types `year?: number`, the device sends `null`, and the fixture that encodes the real shape will not compile against the SDK's version.
 
 - [ ] **Step 1: Create the candidate type**
 
