@@ -181,10 +181,11 @@ async function probeContacts(): Promise<string> {
 
   const withDates = contacts.filter((contact) => (contact.dates?.length ?? 0) > 0);
   const withBirthdayField = contacts.filter((contact) => contact.birthday != null);
-  // The control. `dates` and `phones` are both Data-table fields fetched by the same query,
-  // so phones coming back populated while dates does not means the address book genuinely
-  // holds no birthdays — as opposed to the field never being read. Without it, an empty
-  // result cannot be told apart from a broken one.
+  // A weak control, kept for what it does prove: that the Data-table query ran and returned
+  // rows at all. It cannot prove more. `Event.START_DATE/TYPE/LABEL` are DATA1/2/3 — the same
+  // columns as `Phone.NUMBER/TYPE/LABEL` — so the only thing separating a date read from a
+  // phone read is the mimetype in the selection, and that is exactly what this does not vary.
+  // The decisive test is a birthday set by hand in the phone's own Contacts app.
   const withPhones = contacts.filter((contact) => (contact.phones?.length ?? 0) > 0);
 
   const lines = withDates.slice(0, PROBE_SAMPLE_LIMIT).map((contact) => {
@@ -199,7 +200,7 @@ async function probeContacts(): Promise<string> {
     `${contacts.length} contacts`,
     `  ${withDates.length} carry a dates[] entry`,
     `  ${withBirthdayField.length} carry a birthday field`,
-    `  ${withPhones.length} carry a phone (control — if this is 0 too, the read is broken)`,
+    `  ${withPhones.length} carry a phone (control — 0 here too means the read is broken)`,
     '',
     ...(lines.length > 0 ? lines : ['No dates to sample.']),
   ].join('\n');

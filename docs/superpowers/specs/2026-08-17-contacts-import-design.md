@@ -100,9 +100,21 @@ exists:
 - `source` is `PersonSource` from `src/domain/person.ts`, not a re-declared union. That type
   already lists `'ask-link'`, so the v2 source needs no change here.
 - `requestAccess()` returns `'all' | 'limited' | 'none'` rather than
-  `'granted' | 'limited' | 'denied'`, matching `ContactsPermissionResponse.accessPrivileges`
-  exactly. Renaming the platform's own vocabulary on the way through buys nothing and costs
-  a translation table.
+  `'granted' | 'limited' | 'denied'`, borrowing the vocabulary of
+  `ContactsPermissionResponse.accessPrivileges`.
+
+  **It is not a pass-through, and an earlier draft of this spec was wrong to say so.**
+  `accessPrivileges` is declared optional and is `undefined` on Android — the probe printed
+  `accessPrivileges: unknown` on a device where permission had just been granted. Returning
+  it directly would hand back `undefined` from a function typed `AccessLevel`: `tsc` accepts
+  it, every Android caller receives a value outside the union, and a `switch` over the three
+  cases silently falls through. So the adapter maps:
+
+  ```
+  accessPrivileges ?? (granted ? 'all' : 'none')
+  ```
+
+  Android has no notion of partial access, so `granted` is the whole answer there.
 
 Calendar import is the second implementor and the interface is shaped for it without
 bending: an event has an id, a title and a date, the same three things a contact has.
@@ -117,9 +129,31 @@ instances whose `getBirthday()` is an async native call *per contact* — an add
 400 people would cross the bridge 400 times to answer one question. `getAllDetails` asks
 once.
 
-Fields requested: the contact id, the name, `birthday`, and `dates`.
+### The field list is itself a platform fork
 
-### The platform fork
+Fields requested: the contact id, the name, `dates`, and — **on iOS only** — `birthday`.
+
+`expo-contacts` declares one `ContactField` enum for both platforms, but the Android native
+enum omits exactly two of its members: `BIRTHDAY` and `NON_GREGORIAN_BIRTHDAY`. Asking for
+one on Android does not return an empty field. Argument conversion fails and the entire
+`getAllDetails` call rejects with `Couldn't convert 'birthday' to ContactField`, so **no
+contacts are read at all**. Found by running the probe, not by reading the types — `check`,
+`lint` and `expo export` all pass with it.
+
+The four members that file marks "iOS only" (`MAIDEN_NAME`, `NICKNAME`, `IM_ADDRESS`,
+`SOCIAL_PROFILES`) are present in the Android enum and convert fine; they simply return
+nothing. Only the two birthday members are absent.
+
+This fork lives in `contacts.ts` and must not migrate into `map-contact.ts`. A `Platform.OS`
+check in the mapper would destroy the exact property the mapper exists for — both platforms'
+shapes tested as fixtures, in plain Node, on a machine that is neither. The mapper keeps
+deciding from *which key is present*, not from which platform it is on.
+
+A consequence for the mapper's own type: a runtime-conditional field tuple makes
+`PartialContactDetails<T>` a union, so `ContactInput`'s `birthday` must be optional rather
+than `Pick`ed as always-present.
+
+### The platform fork over where the birthday lands
 
 `getBirthday()` is annotated `@platform ios`. The SDK is explicit about the other side:
 *"To set a birthday on Android, use the `addDate` method with the label 'birthday'."* So a
@@ -130,22 +164,31 @@ some label on Android.
 dates, this field can be omitted to represent a date without a year"*, which is precisely
 `PartialDate`.
 
-### Open question, resolved on a device before the matcher is written
-
-**What does Android actually put in `label`?**
+### Open question: what does Android actually put in `label`?
 
 The type is a bare `string`. The documentation offers `"birthday"` only as an example, and
-says an absent label becomes `"other"`. Nothing states whether Android's
+says an absent label becomes `"other"`. Nothing in the documentation says whether
 `ContactsContract.CommonDataKinds.Event.TYPE_BIRTHDAY` normalises to a fixed English string
-or to something locale-dependent — and the development device is a Brazilian Portuguese
-Android phone, where a localised label is entirely plausible.
+or to something locale-dependent.
 
-Guessing here fails silently and badly: an unmatched label makes a contact look like it has
-no birthday, which is indistinguishable from a contact that genuinely has none. The user
-would be asked to type a date their phone already knew.
+Guessing fails silently and badly: an unmatched label makes a contact look like it has no
+birthday, which is indistinguishable from a contact that genuinely has none. The user would
+be asked to type a date their phone already knew.
 
-So **the matcher is not specified in this document.** A probe lands first, reports what the
-device really returns, and the matcher is written against that answer.
+**Answered from the module's own Kotlin, pending device confirmation.** Two independent
+paths in `expo-contacts` agree that the label is the fixed English word, locale-independent:
+
+- The current path: `EventField.extractLabel()` maps `Event.TYPE_BIRTHDAY` to
+  `EventLabel.Birthday`, and `EventLabelMapper.toRecord` turns that into the literal
+  `"birthday"`.
+- The deprecated path, independently: `Contact.kt` compares `label == "birthday"`.
+
+The same read settles two smaller questions. `month` is 1–12, not 0–11 — `EventMapper.toDto`
+calls `.toInt()` on the `MM` substring of `ContactDate`'s `"--MM-DD"` / `"YYYY-MM-DD"`. And
+`year` is absent exactly when the row is stored in the `--MM-DD` form.
+
+That is a prediction from reading a dependency, and the matcher is worth more than a
+prediction, so **the device still confirms it before the matcher is written.**
 
 This is a sequencing constraint, not a task ordering preference. Implementation of
 `map-contact.ts`'s Android branch is blocked until the probe has been run and its output
@@ -289,12 +332,38 @@ Beyond the suites, `npx expo export --platform android` must pass. `npm run chec
 
 Only a device can answer these.
 
-1. The probe reports what `dates` and `label` contain on a pt-BR Android phone. **Blocks the
-   Android matcher.**
+1. The probe reports what `dates` and `label` contain for **a birthday set by hand in the
+   phone's own Contacts app**, with a second one set without a year if the UI allows it.
+   **Blocks the Android matcher.**
+
+   A hand-set birthday is required rather than convenient. The first probe run on a real
+   address book returned `0 of 435 contacts carry a date`, which is not a result the matcher
+   can be written from — it exercises nothing. Reading someone's existing contacts is a
+   negative test at best; writing one known birthday is the positive control that actually
+   runs `EventField.extractLabel`, and it answers the label, the month base and the
+   no-year case in a single pass.
 2. With contacts permission granted, a scan produces candidates and the counts are plausible
    against a known address book.
 3. With contacts permission denied, `requestAccess()` returns `'none'` and nothing throws.
 4. A contact already imported does not reappear as `ready` on a second scan.
+
+### A failure the mapper cannot catch
+
+`ContactDate` is a Kotlin value class whose `init` block does
+`require(value.matches("--MM-DD|YYYY-MM-DD"))`, and `QueryAggregator.aggregateDataRow` wraps
+no extraction in a try/catch. Android does not validate `Event.START_DATE`, so a row left
+behind by an old vCard, Exchange or SIM import — `1990-01-05T00:00:00Z`, say — throws
+`IllegalArgumentException` out of `getAllDetails` and rejects the whole scan.
+
+This sits *below* the JavaScript boundary, so the mapper catching `RangeError` cannot reach
+it. The failure mode is not "one contact looks birthday-less" but "import returns nothing and
+the user cannot tell why".
+
+Not mitigated, deliberately: the probe ran clean over 435 contacts, so it is a recorded risk
+rather than an observed one. If it does show up, the levers are `ContactQueryOptions`
+`limit`/`offset` paging so one bad row costs one page instead of the scan, or the deprecated
+`getContactsAsync` path, which synthesises `birthday` on both platforms and would collapse
+the fork entirely — a fallback, not a pivot.
 
 iOS limited access is not verifiable this step — no iOS build exists. It is written to the
 documented API and carried into step 6's device pass.
