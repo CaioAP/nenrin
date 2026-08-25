@@ -173,8 +173,18 @@ npx expo export --platform android --output-dir /tmp/nenrin-export
 passes vacuously — green, and evidence of nothing. This bit twice in one branch: `src/sources/
 contacts.ts` and `src/db/skipped.ts` both passed the gate while no route reached either.
 Before treating a green export as proof a new file bundles, confirm something under
-`src/app/` actually imports it, transitively. Grepping the emitted `.hbc` for a string
-unique to the file settles it in one command.
+`src/app/` actually imports it, transitively. Export with `--dump-sourcemap` and grep the
+`.hbc.map` for the module path — its `sources` list is the module graph itself, so a hit is
+proof and a miss is proof of absence:
+
+```bash
+npx expo export --platform android --dump-sourcemap --output-dir /tmp/nenrin-export
+grep -c 'src/sources/contacts.ts' /tmp/nenrin-export/_expo/static/js/android/*.hbc.map
+```
+
+Do not grep the `.hbc` itself for an identifier. Minification renames functions, so
+`scanContacts` and `DebugPanel` are both absent from a bundle that plainly contains them —
+only string literals and the sourcemap survive intact.
 
 ## Commands
 

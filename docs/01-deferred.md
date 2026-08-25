@@ -92,6 +92,22 @@ Left alone rather than unified drive-by.
 correct, but the neighbouring birthday-field count is iOS-only in practice. Cosmetic, in a
 `__DEV__` tool that exists to answer one question that has now been answered.
 
+### An SDK patch sweep and an `expo-image` plugin entry rode in on a contacts commit
+
+`fix(debug): request a per-platform contact field list` also bumped nine Expo packages
+(`expo` 57.0.11 → 57.0.14, `expo-router`, `expo-notifications`, `expo-image` and six more),
+rewrote 697 lines of `package-lock.json`, and added `"expo-image"` to `app.json`'s plugin
+list. Its message mentions none of it. The bumps are all patch-level inside SDK 57 and the
+branch was device-tested at these versions, so they stay — but the lockfile is the exact
+surface where the EAS npm 10/11 `EBADPLATFORM @esbuild/aix-ppc64` failure lives, so a sweep
+that lands unannounced is worth a note.
+
+The plugin entry is the loose end: **nothing under `src/` imports `expo-image`**. It is an
+unused dependency from the Expo template that now also carries native config. Removing the
+entry is a native-build change no local gate can verify — `expo export` does not run config
+plugins — so it stays until there is a build to test it against. Decide it with the iOS
+usage-description work, not on its own.
+
 ### Contacts import may be the wrong first funnel for this user
 
 The development device's address book holds **0 birthdays across 433 contacts** — the only
