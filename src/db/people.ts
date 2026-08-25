@@ -15,7 +15,7 @@ import { randomUUID } from 'expo-crypto';
 
 import { makePartialDate } from '@/domain/birthday';
 import type { Tone } from '@/domain/message';
-import { type Person, resolveLeadDays } from '@/domain/person';
+import { type Person, type PersonSource, resolveLeadDays } from '@/domain/person';
 import type { Schedulable } from '@/domain/schedule';
 import { DEFAULT_SETTINGS } from '@/domain/settings';
 import { db } from './client';
@@ -184,4 +184,22 @@ export async function findByExternalId(
     .where(and(eq(person.source, source), eq(person.externalId, externalId)))
     .limit(1);
   return rows[0] ? toPerson(rows[0]) : null;
+}
+
+/**
+ * Every external id this source has already produced a person for.
+ *
+ * One query instead of one per candidate — `findByExternalId` answers the same question for
+ * a single contact, which is the wrong shape for a scan of hundreds.
+ *
+ * Soft-deleted rows count, exactly as they do in `findByExternalId`: someone the user
+ * deleted must not quietly return the next time they import their address book.
+ */
+export async function listExternalIdsBySource(source: PersonSource): Promise<Set<string>> {
+  const rows = await db
+    .select({ externalId: person.externalId })
+    .from(person)
+    .where(eq(person.source, source));
+
+  return new Set(rows.map((row) => row.externalId).filter((id): id is string => id !== null));
 }

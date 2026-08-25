@@ -63,6 +63,61 @@ one spurious reminder every remaining morning before the birthday. The regressio
 the mirror property in `src/domain/`. It cannot cover the `src/db/` write that actually
 caused it, because `client.ts` needs a device. The gap is structural, not an oversight.
 
+## From the contacts-import branch
+
+### `src/sources/contacts.ts` has no unit tests, deliberately
+
+It is a sequence of `expo-contacts` calls with no branching of its own beyond `Platform.OS`.
+Mocking the SDK and asserting the mock was called proves nothing about a device. Everything
+that can be wrong — the birthday fork, impossible dates, name assembly — lives in
+`map-contact.ts`, which is pure and has 13 tests covering both platform shapes. If logic ever
+accumulates in `contacts.ts`, that logic belongs in the mapper instead.
+
+### `src/db/` cannot be unit tested at all
+
+`client.ts` calls `openDatabaseSync` at module scope, so importing *anything* from `src/db/`
+needs a device. `listExternalIdsBySource`, `listSkippedExternalIds` and `skipContact` are
+therefore verified by the type checker, the bundler and a device pass, not by Vitest. Same
+structural gap already recorded above for the `setTone` write path — not an oversight, and
+not fixable without making the database handle async and restructuring every consumer.
+
+### `findByExternalId` and `listExternalIdsBySource` type the same parameter two ways
+
+`Person['source']` in one, `PersonSource` in the other, in the same file. Identical type.
+Left alone rather than unified drive-by.
+
+### The probe's summary counts a contact with only `birthday` populated
+
+`probeContacts` in `debug-tools.tsx` reports "N carry a dates[] entry" from a filter that is
+correct, but the neighbouring birthday-field count is iOS-only in practice. Cosmetic, in a
+`__DEV__` tool that exists to answer one question that has now been answered.
+
+### An SDK patch sweep and an `expo-image` plugin entry rode in on a contacts commit
+
+`fix(debug): request a per-platform contact field list` also bumped nine Expo packages
+(`expo` 57.0.11 → 57.0.14, `expo-router`, `expo-notifications`, `expo-image` and six more),
+rewrote 697 lines of `package-lock.json`, and added `"expo-image"` to `app.json`'s plugin
+list. Its message mentions none of it. The bumps are all patch-level inside SDK 57 and the
+branch was device-tested at these versions, so they stay — but the lockfile is the exact
+surface where the EAS npm 10/11 `EBADPLATFORM @esbuild/aix-ppc64` failure lives, so a sweep
+that lands unannounced is worth a note.
+
+The plugin entry is the loose end: **nothing under `src/` imports `expo-image`**. It is an
+unused dependency from the Expo template that now also carries native config. Removing the
+entry is a native-build change no local gate can verify — `expo export` does not run config
+plugins — so it stays until there is a build to test it against. Decide it with the iOS
+usage-description work, not on its own.
+
+### Contacts import may be the wrong first funnel for this user
+
+The development device's address book holds **0 birthdays across 433 contacts** — the only
+two found were written by hand to close the device gate. `docs/00-design.md` ranks work by
+cost-per-birthday-acquired and puts contacts import first; on this phone it acquires nothing.
+That is one address book and does not re-rank the roadmap on its own, but the open question
+is whether Google's auto-generated "Birthdays" calendar holds what Contacts does not. If it
+does, calendar import (step 7) out-earns contacts import (step 5) and the order should swap.
+Worth answering before step 6 polishes a triage deck fed by an empty source.
+
 ## Theme
 
 `backgroundElement` is 1.12:1 against `background` in dark mode (it was 1.32:1 while
