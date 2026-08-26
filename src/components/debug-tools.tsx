@@ -271,9 +271,13 @@ async function runContactScan(): Promise<string> {
   ].join('\n');
 }
 
-/** How many calendars and events to print. The question is what the strings look like. */
-const CALENDAR_SAMPLE_LIMIT = 12;
-const EVENT_SAMPLE_LIMIT = 8;
+/**
+ * How many matches to print. Kept small because the output is read on a phone screen with no
+ * way to copy it — the first run of this probe took seven screenshots, which is a probe that
+ * cannot be read. Everything below prints one line per calendar and expands only what the
+ * question is actually about.
+ */
+const EVENT_SAMPLE_LIMIT = 10;
 /** One year forward: every yearly birthday falls in the window exactly once. */
 const PROBE_WINDOW_DAYS = 365;
 /** Half a window, so the shifted read still overlaps the first by half a year. */
@@ -361,74 +365,85 @@ async function probeCalendars(): Promise<string> {
     perCalendar.set(event.calendarId, (perCalendar.get(event.calendarId) ?? 0) + 1);
   }
 
-  const calendarLines = calendars.slice(0, CALENDAR_SAMPLE_LIMIT).map((calendar) => {
-    const identity = [
-      `  id=${JSON.stringify(calendar.id)}`,
-      `  title=${JSON.stringify(calendar.title)}`,
-      // iOS only. Its absence here is the whole reason Android needs the fields below.
-      `  type=${JSON.stringify(calendar.type ?? null)}`,
-      `  name=${JSON.stringify(calendar.name ?? null)}`,
-      `  ownerAccount=${JSON.stringify(calendar.ownerAccount ?? null)}`,
-      `  source.name=${JSON.stringify(calendar.source?.name ?? null)}`,
-      `  source.type=${JSON.stringify(calendar.source?.type ?? null)}`,
-      `  allowsModifications=${calendar.allowsModifications}`,
-      `  isPrimary=${JSON.stringify(calendar.isPrimary ?? null)}`,
-      `  isVisible=${JSON.stringify(calendar.isVisible ?? null)}`,
-      `  events in window=${perCalendar.get(calendar.id) ?? 0}`,
-    ].join('\n');
-    return `${calendar.title}\n${identity}`;
-  });
-
-  // Sampled from the busiest calendar *and* from any calendar that looks like a birthday
-  // one, because on a phone with a real work calendar the busiest is the meetings. The
-  // token match is only for choosing what to print — identifying the calendar for the
-  // adapter is exactly what this probe exists to answer, and it will not be by title.
-  const busiest = [...perCalendar.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const sampledIds = new Set(
-    [busiest, ...calendars.filter(looksLikeBirthdayCalendar).map((calendar) => calendar.id)].filter(
-      (id): id is string => id != null,
-    ),
+  // One line each. The full identity dump ran once and answered its question — on Android
+  // every `type` is null and the birthday calendar is keyed by `ownerAccount`. Re-printing
+  // eleven fields per calendar now only buries the counts.
+  const calendarLines = calendars.map(
+    (calendar) =>
+      `  ${clip(calendar.title)} | ${clip(calendar.ownerAccount ?? calendar.source?.name ?? '?')} | ${perCalendar.get(calendar.id) ?? 0}`,
   );
 
-  const eventLines = [...sampledIds].flatMap((calendarId) => {
-    const title = calendars.find((calendar) => calendar.id === calendarId)?.title ?? calendarId;
-    const sample = events
-      .filter((event) => event.calendarId === calendarId)
-      .slice(0, EVENT_SAMPLE_LIMIT)
-      .map((event) =>
-        [
-          `  title=${JSON.stringify(event.title)}`,
-          `    id=${JSON.stringify(event.id)}`,
-          // Android only, and documented as volatile. Printed so the shifted-window verdict
-          // above can be read against something concrete.
-          `    instanceId=${JSON.stringify(event.instanceId ?? null)}`,
-          // A null rule with a concrete date means listEvents returned an *expanded
-          // instance*, and this year is the occurrence, not the birth year. A populated rule
-          // means the master event, whose startDate may carry the real year. Which one shows
-          // up decides whether this source can ever fill PartialDate.year.
-          `    recurrenceRule=${JSON.stringify(event.recurrenceRule)}`,
-          `    startDate=${formatProbeDate(event.startDate)}`,
-          `    allDay=${event.allDay}`,
-        ].join('\n'),
-      );
-    return [`${title}:`, ...(sample.length > 0 ? sample : ['  (no events in window)'])];
-  });
+  // Expanded only for the calendars that claim to be about birthdays, because those are the
+  // ones whose identity fields the adapter would have to match on.
+  const birthdayCalendars = calendars.filter(looksLikeBirthdayCalendar);
+  const birthdayCalendarLines = birthdayCalendars.flatMap((calendar) => [
+    `  ${calendar.title}`,
+    `    name=${JSON.stringify(calendar.name ?? null)}`,
+    `    ownerAccount=${JSON.stringify(calendar.ownerAccount ?? null)}`,
+    `    source.type=${JSON.stringify(calendar.source?.type ?? null)}`,
+    `    type=${JSON.stringify(calendar.type ?? null)}`,
+    `    events=${perCalendar.get(calendar.id) ?? 0}`,
+  ]);
+
+  // The measurement this run exists for. The generated birthday calendar is derived from the
+  // address book, so it can hold nothing Contacts does not — but a birthday typed by hand
+  // into an ordinary calendar is a source Contacts genuinely does not have. This scans every
+  // event in every calendar, which is what the first run's twelve-calendar cap missed.
+  const byTitle = events.filter((event) => looksLikeBirthdayEvent(event.title));
+  const titleOf = (id: string) => calendars.find((calendar) => calendar.id === id)?.title ?? id;
+  const matchLines = byTitle
+    .slice(0, EVENT_SAMPLE_LIMIT)
+    .map(
+      (event) =>
+        `  ${JSON.stringify(event.title)} | ${titleOf(event.calendarId)} | ${formatProbeDate(event.startDate)} | allDay=${event.allDay} | rule=${event.recurrenceRule ? 'yes' : 'null'}`,
+    );
 
   return [
     `${Platform.OS}, permission: ${permission.status}`,
-    `${calendars.length} event calendars, ${events.length} events in ${PROBE_WINDOW_DAYS} days`,
-    `same-window re-read agrees: ${idsOf(events) === idsOf(sameWindow) ? 'yes' : 'NO — unstable within one snapshot'}`,
-    `ids survive a ${PROBE_SHIFT_DAYS}-day window shift: ${
+    `${calendars.length} calendars, ${events.length} events in ${PROBE_WINDOW_DAYS} days`,
+    `ids survive a ${PROBE_SHIFT_DAYS}-day shift: ${
       idsOf(events.filter(inOverlap)) === idsOf(shifted.filter(inOverlap))
-        ? 'YES — an event id can be externalId'
-        : 'NO — event id is expansion-derived, externalId needs a synthetic key'
-    }`,
+        ? 'YES'
+        : 'NO — expansion-derived, needs a synthetic key'
+    } (same-window re-read: ${idsOf(events) === idsOf(sameWindow) ? 'agrees' : 'DISAGREES'})`,
     '',
+    `BIRTHDAY-TITLED EVENTS: ${byTitle.length} of ${events.length}`,
+    ...(matchLines.length > 0 ? matchLines : ['  (none — no calendar carries a birthday)']),
+    '',
+    `Birthday calendars (${birthdayCalendars.length}):`,
+    ...(birthdayCalendarLines.length > 0 ? birthdayCalendarLines : ['  (none)']),
+    '',
+    'All calendars — title | ownerAccount | events:',
     ...calendarLines,
-    '',
-    events.length > 0 ? 'Samples:' : 'No events in the window.',
-    ...eventLines,
   ].join('\n');
+}
+
+/**
+ * Whether an event title claims to be a birthday, in the languages this phone might use.
+ *
+ * Deliberately loose, and the noise is the point of measuring rather than assuming:
+ * "aniversário" is a wedding or company anniversary as often as a birthday in Portuguese,
+ * and a match here is a candidate to look at, not a person to import. A count of zero is
+ * the only result this can deliver unambiguously — and zero is the result worth knowing.
+ */
+function looksLikeBirthdayEvent(title: string): boolean {
+  const haystack = title.toLowerCase();
+  return [
+    'birthday',
+    'bday',
+    'b-day',
+    'anivers',
+    'niver',
+    'cumplea',
+    'geburtstag',
+    'compleanno',
+    'anniversaire',
+  ].some((token) => haystack.includes(token));
+}
+
+/** Meeting-room calendars have titles that wrap five lines on a phone. The count is what matters. */
+function clip(value: string): string {
+  return value.length > 38 ? `${value.slice(0, 37)}…` : value;
 }
 
 function addDays(date: Date, days: number): Date {
