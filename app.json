@@ -44,7 +44,14 @@
           "color": "#244f7c"
         }
       ],
-      "expo-image"
+      "expo-image",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Nenrin reads your calendars so it can find birthdays already saved there, instead of asking you to type them in again.",
+          "remindersPermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

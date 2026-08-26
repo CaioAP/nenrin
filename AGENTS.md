@@ -101,6 +101,21 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   this: `check`, `lint` and `expo export` all pass, and the failure is a runtime rejection on
   a device.
 
+- **`expo-calendar` cannot run in Expo Go, and names a calendar differently on each
+  platform.** The module resolves `CalendarNext` at import and substitutes
+  `ExpoGoCalendarNextStub` under Expo Go — every method of it throws, so unlike
+  `expo-notifications` the *import* is safe and only the calls die. A dev build is required
+  either way. The fork that shapes the adapter is **which field identifies a calendar**:
+  `type === 'birthdays'` (`SourceType.BIRTHDAYS`) is **iOS only** and simply absent on
+  Android, which instead carries `name`, `ownerAccount`, `isPrimary` and
+  `source.{name,type}`. Matching the display `title` is wrong on both — that string is the
+  user's locale, not a key. Event ids fork too: `instanceId` is Android-only and documented
+  as "volatile ... not guaranteed to always refer to the same instance", while
+  `originalStartDate` is iOS-only. `externalId` is the whole de-duplication contract
+  (`partitionCandidates`, `person_external_idx`), so an id that changes between reads would
+  re-deal the same person on every scan, silently. Probe both on a device before building on
+  either.
+
 - **`expo-contacts` disagrees with its own types in two places, and both typecheck.**
   `ContactsPermissionResponse.accessPrivileges` is declared optional and is `undefined` on
   Android and pre-iOS-18 — it is an iOS 18 concept and appears nowhere in the Android native
@@ -160,11 +175,30 @@ a user who granted access to a hand-picked subset looks exactly like a user who 
 No iOS build exists yet to say which branch a real build takes. Check this before trusting
 limited access on iOS 18+; it is a property of how the pod was compiled, not of app code.
 
-**iOS needs usage-description strings before it can ship.** `expo-contacts`,
-`expo-calendar` and `expo-notifications` contribute their Android permissions through
-autolinked manifests, so an Android build works with no config plugin entries at all. iOS
-has no equivalent — without `NSContactsUsageDescription` and `NSCalendarsUsageDescription`
-in `app.json`, the first access call crashes rather than prompting.
+**Config plugins arrive on their own; an `app.json` entry only passes them props.** Expo
+auto-applies the config plugin of every autolinked module, so `expo-contacts`,
+`expo-calendar` and `expo-notifications` put their Android permissions *and* their iOS
+usage-description strings into the merged manifest and `Info.plist` with no `plugins` entry
+at all — carrying the plugin's own generic English default copy. (Only `expo-notifications`
+declares permissions in its own `AndroidManifest.xml`; the other two get theirs from their
+plugin, which is why reading a module's manifest is not how you answer this.)
+
+So `expo-calendar` is listed for exactly two reasons, neither of them the permission:
+`calendarPermission` replaces "Allow nenrin to access your calendars" with copy that says
+why, and `remindersPermission: false` **deletes** `NSRemindersUsageDescription` and
+`NSRemindersFullAccessUsageDescription`. Nenrin never touches reminders, and shipping those
+strings would ask App Review to approve access the app does not use.
+
+Check what actually lands rather than reasoning about it from plugin source — this prints
+the merged result:
+
+```bash
+npx expo config --type introspect | grep -E "permissions:|UsageDescription" -A10
+```
+
+One thing that entry cannot fix: `withCalendar` adds `READ_CALENDAR` **and**
+`WRITE_CALENDAR` together, with no prop to omit the write half. Calendar import only reads;
+the write permission arrives one step before calendar export needs it.
 
 ## Verifying
 
@@ -201,6 +235,26 @@ file under `src/app/`, the evidence is instead the caller's diff (something must
 or `Link` to it) plus the typed-route union `tsc` generates, which only contains routes that
 really exist. Reserve the sourcemap grep for modules outside `src/app/`, which is where it
 was derived and where it holds.
+
+**Nor does it work for anything reachable only under `__DEV__`.** `expo export` builds
+production, where `__DEV__` is `false`, `DebugTools` folds to `null` and the whole panel is
+eliminated — its string literals included, and with them any module it alone pulled in. A
+dynamic `import('expo-calendar')` inside a probe is absent from the production sourcemap for
+that reason, and so is `probeContacts`, which has run on a device. **The absence is the
+correct result** — debug code must not ship — so it is evidence of nothing either way. Ask
+Metro for the bundle the device will actually run instead:
+
+```bash
+npx expo start --port 8099 &
+curl -s 'http://127.0.0.1:8099/.expo/.virtual-metro-entry.bundle?platform=android&dev=true&minify=false' -o /tmp/dev.bundle
+grep -c -a -F 'expo-calendar/src/Calendar.ts' /tmp/dev.bundle
+```
+
+`dev=true` keeps `__DEV__` live and `minify=false` keeps the strings, so grepping for a
+module path *or* a literal both work — this is the one bundle where an identifier survives.
+Note the entry point is `.expo/.virtual-metro-entry.bundle`: `index.bundle` does not exist
+here, because `package.json` names `expo-router/entry` as `main`. (`expo export --dev`
+segfaults on this machine; it is not the way in.)
 
 ## Commands
 
