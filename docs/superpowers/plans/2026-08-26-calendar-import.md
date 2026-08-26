@@ -1412,9 +1412,16 @@ export function ImportCalendarSection() {
    * source answer a question only this one has. Nothing goes wrong if it stays local.
    */
   const readAside = useCallback(() => {
-    hiddenCalendarTitles().then((titles) => {
-      if (alive.current) setHidden(titles);
-    });
+    hiddenCalendarTitles()
+      .then((titles) => {
+        if (alive.current) setHidden(titles);
+      })
+      // Caught, unlike the count below. Every method of `ExpoGoCalendarNextStub` throws, and
+      // Expo Go is exactly where a developer opens this screen first — an unhandled rejection
+      // there is console noise around a notice that simply has nothing to say.
+      .catch(() => {
+        if (alive.current) setHidden([]);
+      });
     countDeferred('calendar').then((total) => {
       if (alive.current) setDeferred(total);
     });
@@ -1994,30 +2001,90 @@ EOF
 Nothing above can answer these. A dev build is required — `expo-calendar` substitutes a stub
 under Expo Go whose every method throws.
 
-- [ ] **1. The birthdays appear, and read as people.** The import screen's calendar section
+- [ ] **1. Two permission dialogs, on one screen, at the same time.** On a **fresh install**
+  (or with both permissions cleared in Android settings), open the import screen. Both
+  sections mount together and each fires its own request in the same tick — today only one
+  prompt has ever come from this screen. Confirm **both** dialogs appear and **both** sections
+  end in a non-spinner state. A section stuck on its spinner with no error is the failure:
+  the second request's callback never came back, and nothing in `check`, `lint`, `test` or
+  `expo export` can see it. Check 7 below tests *denied* permissions, which means
+  already-prompted — it does not reach this.
+
+  **If it fails, this is the fix — decided here so it is not designed on a phone.** The
+  calendar section stops requesting on mount, and the prompt moves behind a tap:
+
+  - In `src/sources/calendar.ts`, `requestAccess()` stops prompting and only reports what is
+    already granted, with the prompt split into its own export:
+
+    ```ts
+    /**
+     * Reports an existing grant without prompting.
+     *
+     * Both import sections mount together, so prompting here would put two Android permission
+     * requests in flight in the same tick. The calendar prompt is deliberately the one that
+     * moves behind a tap: contacts is the older path and the calendar section has something
+     * to say before permission exists.
+     */
+    async requestAccess(): Promise<AccessLevel> {
+      const permission = await Calendar.getCalendarPermissions();
+      return permission.granted ? 'all' : 'none';
+    },
+    ```
+
+    ```ts
+    /** Prompts. Called from a button, never from a mount. */
+    export async function requestCalendarAccess(): Promise<AccessLevel> {
+      const permission = await Calendar.requestCalendarPermissions();
+      return permission.granted ? 'all' : 'none';
+    }
+    ```
+
+  - In `src/components/import-calendar-section.tsx`, the `access === 'none'` branch becomes an
+    offer rather than only an explanation:
+
+    ```tsx
+    const askForCalendars = async () => {
+      await requestCalendarAccess();
+      refresh();
+    };
+    ```
+    ```tsx
+    <ThemedText type="subtitle">Birthdays in your calendars</ThemedText>
+    <ThemedText themeColor="textSecondary">
+      Nenrin can look through your calendars for birthdays already saved there. If you have
+      already said no, turn calendars on in your device settings.
+    </ThemedText>
+    <ActionButton label="Look in my calendars" onPress={askForCalendars} />
+    ```
+
+  First run costs one tap; every run after shows the count immediately, and the race is gone
+  permanently rather than being timing-dependent. `getCalendarPermissions` is already imported
+  in `calendar.ts` for `hiddenCalendarTitles`, so nothing new arrives.
+
+- [ ] **2. The birthdays appear, and read as people.** The import screen's calendar section
   shows roughly ten, and the deck's names are `Mãe`, `Pai`, `Breno`, `Luan`, `Jaque 💜∞` —
   not `Mãe's birthday`.
-- [ ] **2. Hiding a calendar is reported, not silently absorbed.** Untick a calendar in
+- [ ] **3. Hiding a calendar is reported, not silently absorbed.** Untick a calendar in
   **Samsung Calendar** (not Google Calendar — Samsung owns the `VISIBLE` column on the test
   device), return to the screen: the notice appears, names the calendar, and the count drops.
   Re-tick it and the count returns.
-- [ ] **3. The UTC bug is really gone.** Save `Mãe` from the deck and open her in the People
+- [ ] **4. The UTC bug is really gone.** Save `Mãe` from the deck and open her in the People
   tab: **25 January**, not the 24th. Only a device in a negative-offset zone shows this end
   to end, and São Paulo is UTC−3.
-- [ ] **4. The source is written correctly.** Save someone from the calendar deck, then
+- [ ] **5. The source is written correctly.** Save someone from the calendar deck, then
   reopen the import screen: the calendar count drops by one and the deck does not deal them
   again. (This is what a hardcoded `'contacts'` would break, and it would break *only* here.)
-- [ ] **5. Skips persist per source.** Skip one `Pai's birthday`, save the other. Re-scan:
+- [ ] **6. Skips persist per source.** Skip one `Pai's birthday`, save the other. Re-scan:
   the skipped one stays gone, the saved one is not re-dealt, and the "ask me again" offer
   appears under the calendar section with a count of 1. Tap it and the skipped one comes back.
-- [ ] **6. Either permission can be denied without taking the other down.** Deny calendar
+- [ ] **7. Either permission can be denied without taking the other down.** Deny calendar
   access: the calendar section explains, and the contacts half still imports and triages.
   Then deny contacts and grant calendars: the contacts section explains, and the calendar
   half still works. This is the requirement the `import.tsx` restructure exists for.
-- [ ] **7. The editable name does not fight the swipe.** Tap the name field on a calendar
+- [ ] **8. The editable name does not fight the swipe.** Tap the name field on a calendar
   card, correct `Jaque 💜∞` to `Jaque`, save. Check the field takes focus without throwing
   the card, and that the corrected name is what got stored.
-- [ ] **8. The contacts deck is unchanged.** Its cards still show a fixed heading, no text
+- [ ] **9. The contacts deck is unchanged.** Its cards still show a fixed heading, no text
   field, and swipe exactly as before. It was device-verified in step 6 and this step must not
   have moved it.
 
@@ -2025,7 +2092,11 @@ under Expo Go whose every method throws.
 
 - [ ] **Update `AGENTS.md`** — add `npm run test:tz` to the Commands block and to the
   Verifying section, and note that the two zones check different things (London for DST
-  transitions, São Paulo for UTC-decoded calendar dates).
+  transitions, São Paulo for UTC-decoded calendar dates). **Rewrite the *Non-obvious
+  constraints* bullet that currently reads "Tests pin `TZ=Europe/London` (see the npm
+  scripts)"** — as written it says London and only London, which is what the step-6 plan
+  turned into the instruction "Do not add a second time zone". Retire that contradiction
+  here rather than leaving the next branch to trip over it.
 - [ ] **Update `docs/00-design.md`** — mark step 7 done in the implementation order.
 - [ ] **Use `superpowers:finishing-a-development-branch`** to decide how `feat/calendar-import`
   is integrated.
