@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
@@ -33,6 +34,7 @@ import { useTheme } from '@/hooks/use-theme';
  * custom time, which cannot be applied until it parses.
  */
 export default function SettingsScreen() {
+  const router = useRouter();
   const { settings } = useSettings();
 
   return (
@@ -73,6 +75,13 @@ export default function SettingsScreen() {
         <ThemedText type="small" themeColor="textSecondary">
           Nenrin stores everything on this device. Nothing is sent anywhere.
         </ThemedText>
+
+        <Section
+          title="Add people"
+          hint="Bring in birthdays your phone already knows, and fill in the ones it does not."
+        >
+          <ActionButton label="Import from contacts" onPress={() => router.push('/import')} />
+        </Section>
 
         <DebugTools />
       </ScrollView>
