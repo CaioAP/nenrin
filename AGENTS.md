@@ -80,6 +80,14 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   and you get `Route "./_layout.tsx" is missing the required default export` followed by
   `Cannot read property 'ErrorBoundary' of undefined`. `check`, `lint`, `test` and
   `expo export` all pass with this bug present.
+- **Gestures need `GestureHandlerRootView` at the app root, or they silently do nothing on
+  Android.** It wraps the tree in `src/app/_layout.tsx` and must keep `flex: 1` — without
+  the flex the view collapses to zero height and the whole app renders blank. expo-router
+  re-exports the component for react-navigation's own stack internals, which is not the same
+  as wrapping the root, so its presence in `node_modules` proves nothing. `check`, `lint`,
+  `test` and `expo export` all pass with it missing. The Babel half needs no work:
+  `babel-preset-expo` ships the Worklets plugin, so `babel.config.js` does not name
+  `react-native-worklets/plugin` and must not start.
 - **Android rejects `ContactField.BIRTHDAY`, and takes the whole call down with it.**
   `expo-contacts` declares one `ContactField` enum for both platforms, but the Android native
   enum (`android/.../records/fields/ContactField.kt`) omits exactly two members: `BIRTHDAY`
@@ -185,6 +193,14 @@ grep -c 'src/sources/contacts.ts' /tmp/nenrin-export/_expo/static/js/android/*.h
 Do not grep the `.hbc` itself for an identifier. Minification renames functions, so
 `scanContacts` and `DebugPanel` are both absent from a bundle that plainly contains them —
 only string literals and the sourcemap survive intact.
+
+**The sourcemap check does not work for route files.** expo-router globs everything under
+`src/app/` into its route table, so a route appears in the module graph whether or not any
+screen links to it — the same vacuous pass the check exists to catch, in a new place. For a
+file under `src/app/`, the evidence is instead the caller's diff (something must `router.push`
+or `Link` to it) plus the typed-route union `tsc` generates, which only contains routes that
+really exist. Reserve the sourcemap grep for modules outside `src/app/`, which is where it
+was derived and where it holds.
 
 ## Commands
 
