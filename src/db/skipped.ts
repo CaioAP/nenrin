@@ -61,7 +61,7 @@ export async function countDeferred(source: PersonSource): Promise<number> {
 
 /**
  * Puts every deferred candidate back in the deck. Refusals are untouched — that is the
- * whole distinction, and the only thing in the app that acts on it.
+ * whole distinction.
  */
 export async function clearDeferred(source: PersonSource): Promise<number> {
   const deleted = await db
