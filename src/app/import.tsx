@@ -114,10 +114,18 @@ export default function ImportScreen() {
         ) : null}
 
         <View style={styles.section}>
+          {/*
+           * Three states, not two. After a successful import `ready` is empty, so the
+           * plain zero-state ("None of your contacts have a birthday saved") would sit
+           * directly above "Added 2 contacts." Both sentences are true; together they
+           * read as a bug.
+           */}
           <ThemedText type="subtitle">
-            {ready.length === 0
-              ? 'None of your contacts have a birthday saved'
-              : `${describeContacts(ready.length)} already ${ready.length === 1 ? 'has' : 'have'} a birthday`}
+            {ready.length > 0
+              ? `${describeContacts(ready.length)} already ${ready.length === 1 ? 'has' : 'have'} a birthday`
+              : imported !== null && imported > 0
+                ? 'Every birthday your contacts had is now in Nenrin'
+                : 'None of your contacts have a birthday saved'}
           </ThemedText>
           {ready.length > 0 ? (
             <ActionButton
