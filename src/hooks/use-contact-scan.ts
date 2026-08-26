@@ -55,6 +55,24 @@ export type ContactScan =
   | { state: 'failed'; error: Error };
 
 /**
+ * Whatever was thrown, as an Error worth showing someone.
+ *
+ * `String(value)` on a rejection shaped `{ code, message }` — which is what an RN bridge
+ * call, expo-contacts or expo-sqlite actually produces — yields "[object Object]", and the
+ * import screen puts `error.message` on screen verbatim. So the one case that most needs
+ * its message preserved is exactly the one a bare `String()` throws away.
+ */
+function asError(value: unknown): Error {
+  if (value instanceof Error) return value;
+
+  if (typeof value === 'object' && value !== null && 'message' in value) {
+    return new Error(String((value as { message: unknown }).message));
+  }
+
+  return new Error(String(value));
+}
+
+/**
  * The same scan as a screen state machine.
  *
  * `rescan` exists because both screens change what the scan would return — importing the
@@ -76,12 +94,7 @@ export function useContactScan(): { scan: ContactScan; rescan: () => void } {
         if (!cancelled) setScan({ state: 'ready', result });
       })
       .catch((error: unknown) => {
-        if (!cancelled) {
-          setScan({
-            state: 'failed',
-            error: error instanceof Error ? error : new Error(String(error)),
-          });
-        }
+        if (!cancelled) setScan({ state: 'failed', error: asError(error) });
       });
 
     // Guards against a scan of four hundred contacts resolving after the screen is gone.
