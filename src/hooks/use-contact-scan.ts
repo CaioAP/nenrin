@@ -19,7 +19,16 @@ export type ScanResult = {
   partitioned: Partitioned;
 };
 
-const NOTHING: Partitioned = { ready: [], needsBirthday: [], alreadyKnown: [] };
+/**
+ * Fresh buckets per call rather than a shared constant.
+ *
+ * A module-level object would hand the same three array instances to every denied scan, so
+ * one consumer sorting or pushing in place would corrupt every other consumer's view. The
+ * aliasing is invisible at the call site, which is exactly why it should not exist.
+ */
+function nothingFound(): Partitioned {
+  return { ready: [], needsBirthday: [], alreadyKnown: [] };
+}
 
 /**
  * Runs the whole read path once.
@@ -29,7 +38,7 @@ const NOTHING: Partitioned = { ready: [], needsBirthday: [], alreadyKnown: [] };
  */
 export async function scanContacts(): Promise<ScanResult> {
   const access = await contactsSource.requestAccess();
-  if (access === 'none') return { access, partitioned: NOTHING };
+  if (access === 'none') return { access, partitioned: nothingFound() };
 
   const candidates = await contactsSource.fetchCandidates();
   const [imported, skipped] = await Promise.all([
