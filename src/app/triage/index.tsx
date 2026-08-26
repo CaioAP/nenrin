@@ -30,7 +30,8 @@ export default function TriageScreen() {
   const { scan, rescan } = useContactScan();
   const [cursor, setCursor] = useState(0);
   const [draft, setDraft] = useState<PersonDraft>(EMPTY_PERSON_DRAFT);
-  const [error, setError] = useState<string | null>(null);
+  const [writeFailure, setWriteFailure] = useState<string | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
@@ -61,6 +62,20 @@ export default function TriageScreen() {
     );
   }
 
+  if (scan.state === 'ready' && scan.result.access === 'none') {
+    return (
+      <ThemedView style={styles.centred}>
+        <Stack.Screen options={{ title: 'Triage' }} />
+        <ThemedText type="subtitle">Contacts are off</ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.centredText}>
+          Nenrin cannot read your address book. Everything else still works — you can add people by
+          hand, and turn contacts on later in your device settings.
+        </ThemedText>
+        <ActionButton label="Go back" onPress={() => router.back()} />
+      </ThemedView>
+    );
+  }
+
   const state = { cards: deck.cards, cursor };
   const card = currentCard(state);
   const peek = currentCard(advance(state));
@@ -84,10 +99,17 @@ export default function TriageScreen() {
   );
   const canSave = parsed.ok;
 
+  // Derived, not stored: a stored validation message goes stale the moment the user picks
+  // the missing field, and the previous version left it on screen until the next card.
+  const validationMessage = !parsed.ok
+    ? (parsed.errors.birthday ?? parsed.errors.year ?? parsed.errors.displayName ?? null)
+    : null;
+
   const nextCard = () => {
     setCursor(advance(state).cursor);
     setDraft(EMPTY_PERSON_DRAFT);
-    setError(null);
+    setWriteFailure(null);
+    setShowValidation(false);
   };
 
   const handle = async (action: TriageAction) => {
@@ -114,7 +136,7 @@ export default function TriageScreen() {
       // The cursor deliberately does not advance on a failed write — but on the swipe path
       // the card has already animated off-screen, so without this the user is left looking
       // at nothing at all. Bumping `attempt` remounts the card to bring it back.
-      setError(
+      setWriteFailure(
         cause instanceof Error ? `Could not save that — ${cause.message}` : 'Could not save that.',
       );
       setAttempt((n) => n + 1);
@@ -159,8 +181,8 @@ export default function TriageScreen() {
           onChangeDraft={setDraft}
           onAction={handle}
           canSave={canSave}
-          error={error}
-          onBlocked={() => setError('Pick a month and a day first.')}
+          error={writeFailure ?? (showValidation ? validationMessage : null)}
+          onBlocked={() => setShowValidation(true)}
         />
       </View>
     </ThemedView>

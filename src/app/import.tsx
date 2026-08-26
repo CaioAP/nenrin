@@ -1,4 +1,4 @@
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -26,6 +26,8 @@ export default function ImportScreen() {
   const [importing, setImporting] = useState(false);
   const [imported, setImported] = useState<number | null>(null);
   const [deferred, setDeferred] = useState(0);
+  const [writeError, setWriteError] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   // Tracks mount state across both the effect below and `refresh`, so a count that
   // resolves after the screen is gone never calls `setDeferred` on a dead component.
@@ -46,11 +48,29 @@ export default function ImportScreen() {
   }, []);
 
   const refresh = useCallback(() => {
+    // Any refresh retires a stale receipt — the count it describes may no longer be true
+    // once the candidate lists have been re-read.
+    setImported(null);
     rescan();
     countDeferred('contacts').then((total) => {
       if (alive.current) setDeferred(total);
     });
   }, [rescan]);
+
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      // `useContactScan` already scans on mount, so refreshing on the first focus would
+      // read the address book twice for one entry. Only a *return* needs the refresh —
+      // the deck runs while this screen stays mounted underneath it, so its counts and
+      // its deferred total are both stale by the time the user comes back.
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      refresh();
+    }, [refresh]),
+  );
 
   if (scan.state === 'scanning') {
     return (
@@ -96,9 +116,16 @@ export default function ImportScreen() {
   const importReady = async () => {
     if (importing) return;
     setImporting(true);
+    setWriteError(null);
     try {
-      setImported(await createFromCandidates(ready));
+      const count = await createFromCandidates(ready);
+      // `refresh` clears `imported` as part of retiring any stale receipt — call it before
+      // setting the real count, not after, or it would erase the very receipt this import
+      // just earned.
       refresh();
+      setImported(count);
+    } catch (cause) {
+      setWriteError(cause instanceof Error ? cause.message : 'Could not add those contacts.');
     } finally {
       // Cleared even on failure, or a rejected write would leave the button dead forever.
       setImporting(false);
@@ -106,8 +133,17 @@ export default function ImportScreen() {
   };
 
   const askAgain = async () => {
-    await clearDeferred('contacts');
-    refresh();
+    if (restoring) return;
+    setRestoring(true);
+    setWriteError(null);
+    try {
+      await clearDeferred('contacts');
+      refresh();
+    } catch (cause) {
+      setWriteError(cause instanceof Error ? cause.message : 'Could not restore those contacts.');
+    } finally {
+      setRestoring(false);
+    }
   };
 
   return (
@@ -176,8 +212,15 @@ export default function ImportScreen() {
             <ActionButton
               label={`Ask me again about the ${deferred} I skipped`}
               onPress={askAgain}
+              disabled={restoring}
             />
           </View>
+        ) : null}
+
+        {writeError ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            {writeError}
+          </ThemedText>
         ) : null}
 
         <ThemedText type="small" themeColor="textSecondary">

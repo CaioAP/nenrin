@@ -10,7 +10,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { Spacing } from '@/constants/theme';
-import { isValidMonthDay } from '@/domain/birthday';
+import { isValidMonthDay, maxDayInMonth } from '@/domain/birthday';
 import type { PersonDraft } from '@/domain/draft';
 import { MONTH_NAMES } from '@/domain/format';
 import { resolveSwipe, type TriageAction } from '@/domain/triage';
@@ -114,9 +114,9 @@ export function TriageCard({
   const cardStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.value }] }));
 
   const days = useMemo(() => {
-    // February offers 29 so leap-day birthdays are enterable; the domain decides where a
-    // 29 February lands in a common year, not this picker.
-    const length = draft.month === null ? 31 : draft.month === 2 ? 29 : monthLength(draft.month);
+    // `maxDayInMonth` already offers 29 in February so leap-day birthdays stay enterable;
+    // the domain decides where a 29 February lands in a common year, not this picker.
+    const length = draft.month === null ? 31 : maxDayInMonth(draft.month);
     return Array.from({ length }, (_, i) => i + 1);
   }, [draft.month]);
 
@@ -217,10 +217,6 @@ export function TriageCard({
       </Animated.View>
     </GestureDetector>
   );
-}
-
-function monthLength(month: number): number {
-  return [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1] ?? 31;
 }
 
 const styles = StyleSheet.create({
