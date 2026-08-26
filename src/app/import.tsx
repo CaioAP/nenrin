@@ -49,8 +49,11 @@ export default function ImportScreen() {
 
   const refresh = useCallback(() => {
     // Any refresh retires a stale receipt — the count it describes may no longer be true
-    // once the candidate lists have been re-read.
+    // once the candidate lists have been re-read. The same goes for a failure message:
+    // without this it would outlive the condition that caused it, sitting on screen across
+    // navigation until the user happened to retry that exact action.
     setImported(null);
+    setWriteError(null);
     rescan();
     countDeferred('contacts').then((total) => {
       if (alive.current) setDeferred(total);
