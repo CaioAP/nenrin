@@ -20,6 +20,7 @@ import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlit
 
 // Type-only, and it points at the domain rather than the other way round: the domain never
 // imports the database. One definition of the source union, used to type the column.
+import type { SkipKind } from '@/domain/import';
 import type { Tone } from '@/domain/message';
 import type { PersonSource } from '@/domain/person';
 
@@ -105,6 +106,13 @@ export const skipped = sqliteTable(
   {
     source: text('source').$type<PersonSource>().notNull(),
     externalId: text('external_id').notNull(),
+    /**
+     * 'deferred' — skipped for now. 'refused' — don't ask again.
+     *
+     * Defaults to 'refused' because every row written before this column existed came from
+     * the don't-ask-again path.
+     */
+    kind: text('kind').$type<SkipKind>().notNull().default('refused'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now),
   },
   (table) => [primaryKey({ columns: [table.source, table.externalId] })],

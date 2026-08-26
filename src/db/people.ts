@@ -14,6 +14,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'expo-crypto';
 
 import { makePartialDate } from '@/domain/birthday';
+import type { ImportCandidate } from '@/domain/import';
 import type { Tone } from '@/domain/message';
 import { type Person, type PersonSource, resolveLeadDays } from '@/domain/person';
 import type { Schedulable } from '@/domain/schedule';
@@ -22,6 +23,7 @@ import { db } from './client';
 import {
   type NewPerson,
   type PersonPatch,
+  toNewPersonFromCandidate,
   toNewPersonRow,
   toPerson,
   toPersonUpdate,
@@ -202,4 +204,29 @@ export async function listExternalIdsBySource(source: PersonSource): Promise<Set
     .where(eq(person.source, source));
 
   return new Set(rows.map((row) => row.externalId).filter((id): id is string => id !== null));
+}
+
+/**
+ * Writes every ready candidate as a person. One statement rather than a loop of
+ * `createPerson`, so it is atomic — a failure part-way through an address book writes
+ * nobody, not half of them.
+ *
+ * The candidate → row conversion lives in `mappers.ts` because `src/domain/` may not import
+ * `NewPerson`.
+ *
+ * Only the `ready` bucket is valid input — `toNewPersonFromCandidate` throws on a candidate
+ * with no birthday rather than skipping it, so passing the wrong bucket fails loudly.
+ */
+export async function createFromCandidates(
+  candidates: readonly ImportCandidate[],
+): Promise<number> {
+  if (candidates.length === 0) return 0;
+
+  const now = new Date();
+  const rows = candidates.map((candidate) =>
+    toNewPersonRow(toNewPersonFromCandidate(candidate), randomUUID(), now),
+  );
+
+  await db.insert(person).values(rows);
+  return rows.length;
 }
