@@ -111,10 +111,20 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   clutters their day view. Nothing in the TypeScript types, the docs, or the `Calendar`
   object says this; `isVisible` is documented only as "indicates whether the OS displays
   events on this calendar", which reads as a display hint rather than a query filter. **This
-  already produced one wrong conclusion**: a device probe reported 0 birthday events across
-  573, while `Contacts' important dates` and the primary Google calendar were both
-  `isVisible: false` and therefore unreadable. Always print `isVisible` beside an event count
-  from this module, and never read a zero without it.
+  already produced two wrong conclusions in a row**: a device probe reported 0 birthday events
+  across 573 while the primary Google calendar sat `isVisible: false`. Made visible, the same
+  phone returned ten real birthdays that had been there all along. Always print `isVisible`
+  beside an event count from this module, and never read a zero without it.
+
+  **`VISIBLE` belongs to whichever app manages calendars, and that is not necessarily the app
+  the user thinks.** On the Samsung test device the calendars read as ticked inside Google
+  Calendar while the provider had them hidden — Samsung Calendar owns the column there, and
+  Google Calendar keeps its checkboxes to itself. So a user can have a calendar switched on,
+  see its events every day, and have it be unreadable to this app. The import UI must say how
+  many calendars are hidden rather than reporting "no birthdays found", because the two are
+  indistinguishable from inside the API. `isVisible` is also **read-only from JavaScript**:
+  the Kotlin `CalendarUpdateRecord` accepts it, but `ModifiableCalendarProperties` is
+  `Pick<ExpoCalendar, 'color' | 'title'>`, so the app cannot fix this for the user.
 
 - **`expo-calendar` cannot run in Expo Go, and names a calendar differently on each
   platform.** The module resolves `CalendarNext` at import and substitutes
@@ -139,10 +149,14 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   while `instanceId` differs per occurrence. And `listEvents` returns expanded instances that
   carry a populated `recurrenceRule` *and* the occurrence's own `startDate`, so that year is
   the occurrence's, never the birth year — this source could not fill `PartialDate.year` on
-  Android even if it had data. Whether it has any is still open — the first probe's zero was
-  a visibility artefact, see the constraint above and *What the free sources actually yielded*
-  in `docs/00-design.md`. Calendar **export** (step 8) is unaffected either way, and these are
-  the facts it inherits.
+  Android even if it had data — confirmed on a device, where every birthday event's
+  `startDate` was the expanded occurrence (2027) beside a populated
+  `{"frequency":"yearly"}` rule. Birthday events also do **not** live in a birthdays calendar:
+  they sit in the user's primary calendar, and the "Birthdays" heading in the Google Calendar
+  app corresponds to nothing in `CalendarContract`. Matching on calendar identity finds none
+  of them; the name has to be parsed out of the title, which is written in the *Google
+  account's* language rather than the device locale (`"Mãe's birthday"` on a Portuguese
+  phone). See *What the free sources actually yielded* in `docs/00-design.md`.
 
 - **`expo-contacts` disagrees with its own types in two places, and both typecheck.**
   `ContactsPermissionResponse.accessPrivileges` is declared optional and is `undefined` on

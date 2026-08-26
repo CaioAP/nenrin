@@ -34,7 +34,7 @@ Rank every feature by **cost-per-birthday-acquired**. Build the funnel top-down:
 | # | Source | Cost | Stage |
 |---|---|---|---|
 | 1 | Contacts with a populated `birthday` field | free, one tap | v1 |
-| 2 | Device calendar events matching birthday patterns | free, one tap | **cut, provisionally** |
+| 2 | Device calendar events matching birthday patterns | free, one tap | v1 — **measured best source** |
 | 3 | Fast manual triage deck (swipe through contacts, day+month only) | ~2s each | v1 |
 | 4 | Ask-link — the contact fills it in themselves | ~0, needs server | **v2** |
 | 5 | Fully manual add | slow | v1 (escape hatch) |
@@ -43,54 +43,73 @@ Facebook birthday export is dead (Graph API removed friend birthdays). Do not pl
 
 ### What the free sources actually yielded
 
-Constraint 5 said the contacts fill rate was a number to measure. It was measured on one
-Android device on 2026-08-26. One source answered; the other turned out not to have been
-asked properly:
+Constraint 5 said the contacts fill rate was a number to measure. Measured on one Android
+device, 2026-08-26 — and the calendar half took three attempts to measure honestly, which is
+the more useful half of this record:
 
 | Source | Read | Birthdays |
 |---|---|---|
 | Contacts | 433 contacts | **2** |
-| Device calendars | 573 events across 16 calendars, one year forward | **unsound — see below** |
+| Device calendars | 89 events, one year forward | **~10** (12 matches incl. duplicates) |
 
-The single title match — `"Feriado- Confraternização Universal (Ano Novo)"` — is a public
-holiday. It matched because `niver` (short for *aniversário*) is a substring of *Universal*.
+**Row 2 out-earns row 1 on this device by roughly five to one**, which is the reverse of the
+funnel's original ranking and the reverse of what the first two probe runs reported.
 
-**The calendar zero does not hold, and the reason is worth more than the number was.**
+#### Why the first two runs said zero
+
 `expo-calendar` hardcodes `CalendarContract.Instances.VISIBLE = 1` into its query on Android,
-in both its APIs, with no way to opt out. `VISIBLE` is the calendar's checkbox in the user's
-calendar app. On the test device `Contacts' important dates` — the birthday calendar — and
-the primary Google calendar were both unticked, so **neither could return an event no matter
-what it held**. Every calendar that reported events was visible; every hidden one reported
-zero, which is exactly what an empty calendar reports. The probe was measuring visibility and
-calling it yield.
+in both its APIs, with no way to opt out. `VISIBLE` is a column on the *calendar*, not the
+event. A hidden calendar returns zero events — identical to a calendar that has none.
 
-The contacts figure above is unaffected: it comes from `expo-contacts` and has no such
-filter.
+Worse, `VISIBLE` is owned by whichever app manages calendars on the device. On this Samsung
+phone that is Samsung Calendar, **not** Google Calendar: the user's calendars read as ticked
+in Google Calendar while the provider had them hidden. Ticking them in Samsung Calendar made
+ten birthdays appear that had been there the whole time.
 
-**Row 2 was never an independent source, and that part survives the correction.** The
-birthday calendar a phone shows is *generated from the address book* — Samsung's is keyed
-`ownerAccount=local.samsungbirthday`, iOS's by `type='birthdays'` — so it holds exactly what
-Contacts holds and cannot hold more. Ranking it as a separate row implied it could out-earn row 1; it
-structurally cannot, whatever the re-measure says. What it *could* have added is a birthday typed by hand into an ordinary calendar —
-and whether any exist is now an open question, not a measured zero.
+Two lessons, both cheap to state and expensive to learn:
 
-**One device is not a population.** This is Caio's phone: a work Google account, a personal
-one, and an address book he has never filled in birthdays on. A user who maintains birthdays
-in Contacts would see row 1 work. Two of 433 does not prove contacts import is worthless in
-general — it proves it is worthless *here*, which is enough to stop spending v1 on it.
+- **Never read a zero from this module without printing `isVisible` beside it.** The probe
+  now leads with a count of hidden calendars for exactly this reason.
+- **A user can believe a calendar is enabled and have it be unreadable to this app.** That is
+  not a test-setup artefact — it is the normal state of a phone with two calendar apps
+  installed, and the import UI has to account for it rather than reporting "no birthdays
+  found".
 
-**Status.** Row 2's cut is *provisional*, pending a re-measure with the calendars made
-visible. What is not provisional is the platform constraint: even if the data were there,
-an Android user who hides their birthday calendar makes it unreadable to this app, silently.
-That alone caps how much row 2 can ever be worth, because hiding a cluttered birthday
-calendar is a normal thing to do.
+#### What a birthday event actually looks like
 
-If the re-measure still reads zero, the conclusion is the one row 1 already points at: the
-triage deck is not a fallback for the funnel; on this data it *is* the funnel, and it already
-ships. That makes the ask-link
-the only untried lever on cost-per-birthday, and moves it from "the reason v2 exists" to the
-thing v2 must get right. Nothing about v1's remaining scope changes: step 8 (calendar
-export) is a write path and does not depend on any of this.
+```
+"Mãe's birthday" — caioap25@gmail.com
+  startDate=2027-01-25T00:00:00.000Z  allDay=true
+  recurrenceRule={"occurrence":null,"interval":null,"frequency":"yearly","endDate":null}
+  id="1636" instanceId=4839
+```
+
+Four consequences for the adapter:
+
+- **The name is inside the title, in the Google account's language.** `"Mãe's birthday"` is
+  English possessive on a Portuguese phone — the format follows the account, not the device
+  locale, so a parser keyed to `Intl` or to the device language is wrong.
+- **There is no birth year.** `startDate` is the occurrence Android expanded (2027), not the
+  original. `originalStartDate` is iOS-only. So every candidate from this source has
+  `birthday.year === null`, which the domain already handles everywhere.
+- **Duplicates are normal.** `"Pai's birthday"` appears twice under different ids, and
+  `"Jaque's birthday"` and `"Jaque 💜∞'s birthday"` are one person entered twice. De-duplication
+  by `externalId` will not catch these; they are distinct events.
+- **They live in the primary calendar**, not in a birthdays calendar. The Google Calendar app
+  groups them under a "Birthdays" heading in its own UI, which does not correspond to a
+  calendar in `CalendarContract` — matching on calendar identity would have found none of
+  them.
+
+#### What this does not say
+
+One device, one user. It does not establish that calendars beat contacts in general — it
+establishes that on a phone where the address book was never filled in, the birthdays were
+in Google Calendar instead, and that a plausible-looking zero was an artefact three times
+before it was a measurement.
+
+The earlier claim recorded here — that the birthday calendar is generated from Contacts and
+therefore cannot out-earn contacts import — is **withdrawn**. It is true of the Samsung
+`local.samsungbirthday` calendar, which is empty. It is not true of these events.
 
 ## v1 scope
 
@@ -220,11 +239,9 @@ impossible to bolt on later if v1 gets these wrong, and all three are nearly fre
    lands low, the triage deck (and later the ask-link) is the product, and import is just
    a seeding step.
 
-   **Measured, 2026-08-26, one Android device: 2 of 433 contacts.** So the prediction this
-   constraint hedged against is the case that happened, and the consequence it names is now
-   the plan: the triage deck is the product, and contacts import is a seeding step that
-   seeded almost nothing. The calendar half of the measurement was invalid — see *What the
-   free sources actually yielded* below.
+   **Measured, 2026-08-26, one Android device: 2 of 433 contacts.** Contacts import alone
+   does not carry the product, exactly as this constraint feared. The calendars did better —
+   about ten — which is why step 7 stays. See *What the free sources actually yielded* below.
 
 ## Implementation order
 
@@ -236,8 +253,8 @@ impossible to bolt on later if v1 gets these wrong, and all three are nearly fre
    300 people before touching a real device.
 5. Contacts source adapter — full grant path, then the limited-access path.
 6. The triage deck. Iterate on gesture speed; this is the screen worth polishing.
-7. ~~Calendar import adapter.~~ **Cut provisionally — see *What the free sources actually
-   yielded*.**
+7. Calendar import adapter. **Measured as the highest-yield source on the test device —
+   see *What the free sources actually yielded*.**
 8. Calendar export.
 9. Groups, message templates, settings.
 
