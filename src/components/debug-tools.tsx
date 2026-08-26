@@ -425,6 +425,11 @@ async function probeCalendars(): Promise<string> {
  * "aniversário" is a wedding or company anniversary as often as a birthday in Portuguese,
  * and a match here is a candidate to look at, not a person to import. A count of zero is
  * the only result this can deliver unambiguously — and zero is the result worth knowing.
+ *
+ * Its one match on a real device was `"Feriado- Confraternização Universal (Ano Novo)"`,
+ * because `niver` is a substring of *Universal*. Left in rather than tightened: a matcher
+ * loose enough to catch a public holiday and still find no birthday says more about the
+ * zero than a careful one would.
  */
 function looksLikeBirthdayEvent(title: string): boolean {
   const haystack = title.toLowerCase();

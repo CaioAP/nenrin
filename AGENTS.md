@@ -113,8 +113,20 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   as "volatile ... not guaranteed to always refer to the same instance", while
   `originalStartDate` is iOS-only. `externalId` is the whole de-duplication contract
   (`partitionCandidates`, `person_external_idx`), so an id that changes between reads would
-  re-deal the same person on every scan, silently. Probe both on a device before building on
-  either.
+  re-deal the same person on every scan, silently.
+
+  **Measured on a Samsung device, 2026-08-26** — `type` was `null` on all sixteen calendars,
+  confirming it is genuinely iOS-only rather than merely undocumented. The generated birthday
+  calendar there is `ownerAccount="local.samsungbirthday"`, and its `name` is `"Birthday"`
+  while its `title` is `"Contacts' important dates"` — one calendar, two different strings,
+  neither of them the other platform's. Event ids survived a 180-day window shift, so an
+  `id` **can** be an `externalId`; note it is the master row, repeating across occurrences,
+  while `instanceId` differs per occurrence. And `listEvents` returns expanded instances that
+  carry a populated `recurrenceRule` *and* the occurrence's own `startDate`, so that year is
+  the occurrence's, never the birth year — this source could not fill `PartialDate.year` on
+  Android even if it had data. It had none: see *Sources that measured zero* in
+  `docs/00-design.md`, which is why calendar **import** is cut. Calendar **export** (step 8)
+  is unaffected, and these are the facts it inherits.
 
 - **`expo-contacts` disagrees with its own types in two places, and both typecheck.**
   `ContactsPermissionResponse.accessPrivileges` is declared optional and is `undefined` on

@@ -34,12 +34,47 @@ Rank every feature by **cost-per-birthday-acquired**. Build the funnel top-down:
 | # | Source | Cost | Stage |
 |---|---|---|---|
 | 1 | Contacts with a populated `birthday` field | free, one tap | v1 |
-| 2 | Device calendar events matching birthday patterns | free, one tap | v1 |
+| 2 | Device calendar events matching birthday patterns | free, one tap | **cut — measured 0** |
 | 3 | Fast manual triage deck (swipe through contacts, day+month only) | ~2s each | v1 |
 | 4 | Ask-link — the contact fills it in themselves | ~0, needs server | **v2** |
 | 5 | Fully manual add | slow | v1 (escape hatch) |
 
 Facebook birthday export is dead (Graph API removed friend birthdays). Do not plan for it.
+
+### Sources that measured zero
+
+Constraint 5 said the contacts fill rate was a number to measure. It was measured on one
+Android device on 2026-08-26, and both free sources came back empty:
+
+| Source | Read | Birthdays |
+|---|---|---|
+| Contacts | 433 contacts | **2** |
+| Device calendars | 573 events across 16 calendars, one year forward | **0** |
+
+The single title match — `"Feriado- Confraternização Universal (Ano Novo)"` — is a public
+holiday. It matched because `niver` (short for *aniversário*) is a substring of *Universal*.
+A matcher generous enough to produce a false positive still produced no true one, which is
+the strongest form the zero could take.
+
+**Row 2 was never an independent source, and that is the part worth keeping.** The
+birthday calendar a phone shows is *generated from the address book* — Samsung's is keyed
+`ownerAccount=local.samsungbirthday`, iOS's by `type='birthdays'` — so it holds exactly what
+Contacts holds and cannot hold more. On this device it held nothing, because Contacts held
+nothing. Ranking it as a separate row implied it could out-earn row 1; it structurally
+cannot. What it *could* have added is a birthday typed by hand into an ordinary calendar,
+and across 573 events there were none.
+
+**One device is not a population.** This is Caio's phone: a work Google account, a personal
+one, and an address book he has never filled in birthdays on. A user who maintains birthdays
+in Contacts would see rows 1 and 2 both work. The measurement does not prove the sources are
+worthless in general — it proves they are worthless *here*, which is enough to stop
+spending v1 on them.
+
+**Consequence.** Row 2 is cut and step 7 with it. The triage deck is not a fallback for
+the funnel; on this data it *is* the funnel, and it already ships. That makes the ask-link
+the only untried lever on cost-per-birthday, and moves it from "the reason v2 exists" to the
+thing v2 must get right. Nothing about v1's remaining scope changes: step 8 (calendar
+export) is a write path and does not depend on any of this.
 
 ## v1 scope
 
@@ -169,6 +204,12 @@ impossible to bolt on later if v1 gets these wrong, and all three are nearly fre
    lands low, the triage deck (and later the ask-link) is the product, and import is just
    a seeding step.
 
+   **Measured, 2026-08-26, one Android device: it lands at zero.** 433 contacts carried 2
+   birthdays; 573 calendar events across 16 calendars carried 0. So the prediction this
+   constraint hedged against is the case that happened, and the consequence it names is now
+   the plan: the triage deck is the product, and import is a seeding step that seeded almost
+   nothing. See *Sources that measured zero* below.
+
 ## Implementation order
 
 1. `src/domain/` — partial dates, next-occurrence, rolling-window scheduling. Pure TS, TDD,
@@ -179,7 +220,7 @@ impossible to bolt on later if v1 gets these wrong, and all three are nearly fre
    300 people before touching a real device.
 5. Contacts source adapter — full grant path, then the limited-access path.
 6. The triage deck. Iterate on gesture speed; this is the screen worth polishing.
-7. Calendar import adapter.
+7. ~~Calendar import adapter.~~ **Cut after measurement — see *Sources that measured zero*.**
 8. Calendar export.
 9. Groups, message templates, settings.
 
