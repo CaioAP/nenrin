@@ -73,8 +73,11 @@ describe('resolveSwipe', () => {
     expect(resolveSwipe({ translationX: SWIPE_THRESHOLD + 1, canSave: false })).toBe('blocked');
   });
 
-  it('defers left even with an incomplete draft, because skipping needs no date', () => {
-    expect(resolveSwipe({ translationX: -SWIPE_THRESHOLD - 1, canSave: false })).toBe('defer');
+  it('defers left even when the draft is complete, because skipping is not saving', () => {
+    // The untested half: a left swipe must ignore canSave entirely. Without this, an
+    // implementation that returned 'blocked' for a complete draft would pass every
+    // other case in this file.
+    expect(resolveSwipe({ translationX: -SWIPE_THRESHOLD - 1, canSave: true })).toBe('defer');
   });
 
   it('does nothing for a drag that never reaches the threshold', () => {
