@@ -1,3 +1,4 @@
+import type { ExpoCalendar, ExpoCalendarEvent } from 'expo-calendar';
 import * as Contacts from 'expo-contacts';
 import { useCallback, useEffect, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
@@ -275,6 +276,8 @@ const CALENDAR_SAMPLE_LIMIT = 12;
 const EVENT_SAMPLE_LIMIT = 8;
 /** One year forward: every yearly birthday falls in the window exactly once. */
 const PROBE_WINDOW_DAYS = 365;
+/** Half a window, so the shifted read still overlaps the first by half a year. */
+const PROBE_SHIFT_DAYS = 180;
 
 /**
  * Dumps what the device calendars actually are, because the SDK types cannot say.
@@ -331,13 +334,27 @@ async function probeCalendars(): Promise<string> {
   }
 
   const from = new Date();
-  const to = new Date(from.getTime() + PROBE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const to = addDays(from, PROBE_WINDOW_DAYS);
   const ids = calendars.map((calendar) => calendar.id);
 
   const events = await Calendar.listEvents(ids, from, to);
-  // The same window, read again. If these ids disagree, `externalId` cannot be an event id
-  // and the adapter needs a synthetic key — which is a design decision, not a detail.
-  const secondRead = await Calendar.listEvents(ids, from, to);
+
+  // A second read of the *same* window proves almost nothing: both calls hit one provider
+  // snapshot milliseconds apart, so they agree even when ids are unstable. Kept only as a
+  // sanity check that two identical queries answer identically.
+  const sameWindow = await Calendar.listEvents(ids, from, to);
+
+  // This is the test that can fail. Reading a window shifted by half its length re-runs the
+  // recurrence expansion over a different range, which is the thing Android's "volatile"
+  // warning about `instanceId` is really about. An id derived from the expansion changes;
+  // an id that is the provider's row does not. Compared over the overlap only, where both
+  // reads must contain the same events.
+  const shiftFrom = addDays(from, PROBE_SHIFT_DAYS);
+  const shifted = await Calendar.listEvents(ids, shiftFrom, addDays(to, PROBE_SHIFT_DAYS));
+  const inOverlap = (event: ExpoCalendarEvent) => {
+    const start = new Date(event.startDate).getTime();
+    return start >= shiftFrom.getTime() && start <= to.getTime();
+  };
 
   const perCalendar = new Map<string, number>();
   for (const event of events) {
@@ -362,47 +379,81 @@ async function probeCalendars(): Promise<string> {
     return `${calendar.title}\n${identity}`;
   });
 
-  // Sampled from the calendar carrying the most events, which on a phone with a birthdays
-  // calendar is overwhelmingly likely to be it — and if it is not, the counts above say so.
+  // Sampled from the busiest calendar *and* from any calendar that looks like a birthday
+  // one, because on a phone with a real work calendar the busiest is the meetings. The
+  // token match is only for choosing what to print — identifying the calendar for the
+  // adapter is exactly what this probe exists to answer, and it will not be by title.
   const busiest = [...perCalendar.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const eventLines = events
-    .filter((event) => event.calendarId === busiest)
-    .slice(0, EVENT_SAMPLE_LIMIT)
-    .map((event) =>
-      [
-        `  title=${JSON.stringify(event.title)}`,
-        `    id=${JSON.stringify(event.id)}`,
-        // Android only, and documented as volatile. Printed so the second-read comparison
-        // below can be read against something concrete.
-        `    instanceId=${JSON.stringify(event.instanceId ?? null)}`,
-        `    startDate=${formatProbeDate(event.startDate)}`,
-        `    allDay=${event.allDay}`,
-        `    recurrenceRule=${JSON.stringify(event.recurrenceRule)}`,
-      ].join('\n'),
-    );
+  const sampledIds = new Set(
+    [busiest, ...calendars.filter(looksLikeBirthdayCalendar).map((calendar) => calendar.id)].filter(
+      (id): id is string => id != null,
+    ),
+  );
 
-  // Sorted, because the question is whether the *set* of ids survived a second read. Two
-  // reads returning the same ids in a different order is not instability, and comparing them
-  // in arrival order would report it as such.
-  const firstIds = events
-    .map((event) => event.id)
-    .sort()
-    .join('|');
-  const secondIds = secondRead
-    .map((event) => event.id)
-    .sort()
-    .join('|');
+  const eventLines = [...sampledIds].flatMap((calendarId) => {
+    const title = calendars.find((calendar) => calendar.id === calendarId)?.title ?? calendarId;
+    const sample = events
+      .filter((event) => event.calendarId === calendarId)
+      .slice(0, EVENT_SAMPLE_LIMIT)
+      .map((event) =>
+        [
+          `  title=${JSON.stringify(event.title)}`,
+          `    id=${JSON.stringify(event.id)}`,
+          // Android only, and documented as volatile. Printed so the shifted-window verdict
+          // above can be read against something concrete.
+          `    instanceId=${JSON.stringify(event.instanceId ?? null)}`,
+          // A null rule with a concrete date means listEvents returned an *expanded
+          // instance*, and this year is the occurrence, not the birth year. A populated rule
+          // means the master event, whose startDate may carry the real year. Which one shows
+          // up decides whether this source can ever fill PartialDate.year.
+          `    recurrenceRule=${JSON.stringify(event.recurrenceRule)}`,
+          `    startDate=${formatProbeDate(event.startDate)}`,
+          `    allDay=${event.allDay}`,
+        ].join('\n'),
+      );
+    return [`${title}:`, ...(sample.length > 0 ? sample : ['  (no events in window)'])];
+  });
 
   return [
     `${Platform.OS}, permission: ${permission.status}`,
     `${calendars.length} event calendars, ${events.length} events in ${PROBE_WINDOW_DAYS} days`,
-    `ids stable across two reads: ${firstIds === secondIds ? 'YES' : 'NO — event id cannot be externalId'}`,
+    `same-window re-read agrees: ${idsOf(events) === idsOf(sameWindow) ? 'yes' : 'NO — unstable within one snapshot'}`,
+    `ids survive a ${PROBE_SHIFT_DAYS}-day window shift: ${
+      idsOf(events.filter(inOverlap)) === idsOf(shifted.filter(inOverlap))
+        ? 'YES — an event id can be externalId'
+        : 'NO — event id is expansion-derived, externalId needs a synthetic key'
+    }`,
     '',
     ...calendarLines,
     '',
-    events.length > 0 ? 'Sample from the busiest calendar:' : 'No events in the window.',
+    events.length > 0 ? 'Samples:' : 'No events in the window.',
     ...eventLines,
   ].join('\n');
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+/** Sorted, because the question is whether the same *set* of ids came back, not the order. */
+function idsOf(events: readonly ExpoCalendarEvent[]): string {
+  return events
+    .map((event) => event.id)
+    .sort()
+    .join('|');
+}
+
+/**
+ * Only decides which calendar's events are worth printing. Deliberately not how the adapter
+ * will identify a birthday calendar — a display title is the device's locale, so this list
+ * is a guess that costs nothing when it misses and saves a device trip when it hits.
+ */
+function looksLikeBirthdayCalendar(calendar: ExpoCalendar): boolean {
+  if (calendar.type === 'birthdays') return true;
+  const haystack = `${calendar.title} ${calendar.name ?? ''}`.toLowerCase();
+  return ['birthday', 'anivers', 'geburtstag', 'cumplea', 'contacts'].some((token) =>
+    haystack.includes(token),
+  );
 }
 
 /** `startDate` is typed `string | Date` and the platforms disagree about which. */
