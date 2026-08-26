@@ -389,14 +389,24 @@ async function probeCalendars(): Promise<string> {
   // address book, so it can hold nothing Contacts does not — but a birthday typed by hand
   // into an ordinary calendar is a source Contacts genuinely does not have. This scans every
   // event in every calendar, which is what the first run's twelve-calendar cap missed.
-  const byTitle = events.filter((event) => looksLikeBirthdayEvent(event.title));
+  const birthdayCalendarIds = new Set(birthdayCalendars.map((calendar) => calendar.id));
+  // Both routes in, because a birthday reaches a phone two ways and they look nothing alike:
+  // entered in Contacts it lands in the generated calendar with no birthday word in its
+  // title, and typed straight into an ordinary calendar it has the word and no special
+  // calendar. Matching only one of them would report the other as absent.
+  const byTitle = events.filter(
+    (event) => looksLikeBirthdayEvent(event.title) || birthdayCalendarIds.has(event.calendarId),
+  );
   const titleOf = (id: string) => calendars.find((calendar) => calendar.id === id)?.title ?? id;
-  const matchLines = byTitle
-    .slice(0, EVENT_SAMPLE_LIMIT)
-    .map(
-      (event) =>
-        `  ${JSON.stringify(event.title)} | ${titleOf(event.calendarId)} | ${formatProbeDate(event.startDate)} | allDay=${event.allDay} | rule=${event.recurrenceRule ? 'yes' : 'null'}`,
-    );
+  const matchLines = byTitle.slice(0, EVENT_SAMPLE_LIMIT).flatMap((event) => [
+    `  ${JSON.stringify(event.title)} — ${clip(titleOf(event.calendarId))}`,
+    `    startDate=${formatProbeDate(event.startDate)} allDay=${event.allDay}`,
+    // The whole rule, not a yes/no. If a yearly birthday's rule is `{frequency:"yearly"}`
+    // and its startDate is this year, the birth year is unreachable from a windowed read —
+    // and that is the field calendar export has to reproduce in step 8.
+    `    recurrenceRule=${JSON.stringify(event.recurrenceRule)}`,
+    `    id=${JSON.stringify(event.id)} instanceId=${JSON.stringify(event.instanceId ?? null)}`,
+  ]);
 
   return [
     `${Platform.OS}, permission: ${permission.status}`,
@@ -407,7 +417,7 @@ async function probeCalendars(): Promise<string> {
         : 'NO — expansion-derived, needs a synthetic key'
     } (same-window re-read: ${idsOf(events) === idsOf(sameWindow) ? 'agrees' : 'DISAGREES'})`,
     '',
-    `BIRTHDAY-TITLED EVENTS: ${byTitle.length} of ${events.length}`,
+    `BIRTHDAY EVENTS (title match or in a birthday calendar): ${byTitle.length} of ${events.length}`,
     ...(matchLines.length > 0 ? matchLines : ['  (none — no calendar carries a birthday)']),
     '',
     `Birthday calendars (${birthdayCalendars.length}):`,
