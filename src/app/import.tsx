@@ -1,5 +1,5 @@
 import { Stack, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ActionButton } from '@/components/action-button';
@@ -27,21 +27,29 @@ export default function ImportScreen() {
   const [imported, setImported] = useState<number | null>(null);
   const [deferred, setDeferred] = useState(0);
 
+  // Tracks mount state across both the effect below and `refresh`, so a count that
+  // resolves after the screen is gone never calls `setDeferred` on a dead component.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
   // Read alongside every scan, because "ask me again" must disappear the moment it is used
   // and reappear the moment the deck defers something.
   useEffect(() => {
-    let cancelled = false;
     countDeferred('contacts').then((total) => {
-      if (!cancelled) setDeferred(total);
+      if (alive.current) setDeferred(total);
     });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const refresh = useCallback(() => {
     rescan();
-    countDeferred('contacts').then(setDeferred);
+    countDeferred('contacts').then((total) => {
+      if (alive.current) setDeferred(total);
+    });
   }, [rescan]);
 
   if (scan.state === 'scanning') {
@@ -115,17 +123,16 @@ export default function ImportScreen() {
 
         <View style={styles.section}>
           {/*
-           * Three states, not two. After a successful import `ready` is empty, so the
-           * plain zero-state ("None of your contacts have a birthday saved") would sit
-           * directly above "Added 2 contacts." Both sentences are true; together they
-           * read as a bug.
+           * The zero-state has to be true in every way of arriving at it: nothing ever had a
+           * birthday, they were imported a moment ago, or they were imported on a previous
+           * visit and `imported` has since been reset by a remount. Wording that holds in all
+           * three beats a branch per case — the first version of this had a branch and still
+           * lied on the third.
            */}
           <ThemedText type="subtitle">
             {ready.length > 0
               ? `${describeContacts(ready.length)} already ${ready.length === 1 ? 'has' : 'have'} a birthday`
-              : imported !== null && imported > 0
-                ? 'Every birthday your contacts had is now in Nenrin'
-                : 'None of your contacts have a birthday saved'}
+              : 'No contacts with a birthday left to import'}
           </ThemedText>
           {ready.length > 0 ? (
             <ActionButton
@@ -140,7 +147,7 @@ export default function ImportScreen() {
           ) : null}
           {imported !== null ? (
             <ThemedText type="small" themeColor="textSecondary">
-              {imported === 0 ? 'Nothing new to add.' : `Added ${describeContacts(imported)}.`}
+              Added {describeContacts(imported)}.
             </ThemedText>
           ) : null}
         </View>
