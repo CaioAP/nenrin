@@ -27,16 +27,30 @@ import { useTheme } from '@/hooks/use-theme';
 export default function TriageScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { scan } = useContactScan();
+  const { scan, rescan } = useContactScan();
   const [cursor, setCursor] = useState(0);
   const [draft, setDraft] = useState<PersonDraft>(EMPTY_PERSON_DRAFT);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   const deck = useMemo(() => {
     if (scan.state !== 'ready') return null;
     return makeDeck(scan.result.partitioned.needsBirthday);
   }, [scan]);
+
+  if (scan.state === 'failed') {
+    return (
+      <ThemedView style={styles.centred}>
+        <Stack.Screen options={{ title: 'Triage' }} />
+        <ThemedText type="subtitle">Could not read your contacts</ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.centredText}>
+          {scan.error.message}
+        </ThemedText>
+        <ActionButton label="Try again" onPress={rescan} />
+      </ThemedView>
+    );
+  }
 
   if (scan.state === 'scanning' || !deck) {
     return (
@@ -96,6 +110,14 @@ export default function TriageScreen() {
         );
       }
       nextCard();
+    } catch (cause) {
+      // The cursor deliberately does not advance on a failed write — but on the swipe path
+      // the card has already animated off-screen, so without this the user is left looking
+      // at nothing at all. Bumping `attempt` remounts the card to bring it back.
+      setError(
+        cause instanceof Error ? `Could not save that — ${cause.message}` : 'Could not save that.',
+      );
+      setAttempt((n) => n + 1);
     } finally {
       setBusy(false);
     }
@@ -123,8 +145,15 @@ export default function TriageScreen() {
           </View>
         ) : null}
 
+        {/*
+         * Keyed per person *and* per attempt. The per-person half stops the previous
+         * card's translateX leaking into the next one, which would draw it already flung
+         * off-screen. The attempt half remounts the same card after a failed write, which
+         * is the only way to bring it back from ±600 — TriageCard owns that value and
+         * deliberately does not reset it.
+         */}
         <TriageCard
-          key={card.externalId}
+          key={`${card.externalId}:${attempt}`}
           displayName={card.displayName}
           draft={draft}
           onChangeDraft={setDraft}
@@ -156,5 +185,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.three,
     padding: Spacing.four,
+  },
+  centredText: {
+    textAlign: 'center',
   },
 });
