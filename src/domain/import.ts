@@ -31,9 +31,10 @@ export type HandledExternalIds = {
 /**
  * Why a candidate is not in the deck.
  *
- * Both values keep a candidate out, so nothing reads them differently yet. The distinction
- * is recorded at write time because it cannot be reconstructed later: once rows exist
- * without it, "not now" and "never" are indistinguishable forever.
+ * The deck passes over both kinds identically; only the "ask me again" path distinguishes
+ * them. The distinction is recorded at write time regardless, because it cannot be
+ * reconstructed later: once rows exist without it, "not now" and "never" are
+ * indistinguishable forever.
  */
 export type SkipKind = 'deferred' | 'refused';
 
