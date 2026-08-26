@@ -370,8 +370,14 @@ async function probeCalendars(): Promise<string> {
   // eleven fields per calendar now only buries the counts.
   const calendarLines = calendars.map(
     (calendar) =>
-      `  ${clip(calendar.title)} | ${clip(calendar.ownerAccount ?? calendar.source?.name ?? '?')} | ${perCalendar.get(calendar.id) ?? 0}`,
+      `  ${calendar.isVisible ? '[shown]' : '[HIDDEN]'} ${clip(calendar.title)} | ${perCalendar.get(calendar.id) ?? 0}`,
   );
+
+  // The single most misleading thing this probe can print. `listEvents` cannot see a hidden
+  // calendar at all, so a hidden one always reports zero events and looks identical to an
+  // empty one — which is how a first run concluded "no calendar carries a birthday" while
+  // the birthday calendar sat hidden. Counted and named, so the reading is never in doubt.
+  const hidden = calendars.filter((calendar) => calendar.isVisible === false);
 
   // Expanded only for the calendars that claim to be about birthdays, because those are the
   // ones whose identity fields the adapter would have to match on.
@@ -423,7 +429,16 @@ async function probeCalendars(): Promise<string> {
     `Birthday calendars (${birthdayCalendars.length}):`,
     ...(birthdayCalendarLines.length > 0 ? birthdayCalendarLines : ['  (none)']),
     '',
-    'All calendars — title | ownerAccount | events:',
+    ...(hidden.length > 0
+      ? [
+          `⚠ ${hidden.length} of ${calendars.length} calendars are HIDDEN in the calendar app.`,
+          '  expo-calendar hardcodes `Instances.VISIBLE = 1` in both its APIs, so events in',
+          '  these are unreadable — a hidden calendar reports 0 and an empty one reports 0.',
+          `  Hidden: ${hidden.map((calendar) => clip(calendar.title)).join(', ')}`,
+          '',
+        ]
+      : []),
+    'All calendars — visibility | title | events:',
     ...calendarLines,
   ].join('\n');
 }

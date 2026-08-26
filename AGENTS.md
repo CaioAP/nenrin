@@ -101,6 +101,21 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   this: `check`, `lint` and `expo export` all pass, and the failure is a runtime rejection on
   a device.
 
+- **On Android, `expo-calendar` cannot read a calendar the user has unticked, and reports it
+  as empty.** Both APIs hardcode the same clause — `InstanceRepository.buildSelection` in the
+  next API and `buildSelectionForEventsQuery` in the legacy one both add
+  `CalendarContract.Instances.VISIBLE = 1` to the selection, with no option to omit it.
+  `VISIBLE` is the *calendar's* checkbox in the user's calendar app, not a property of any
+  event. So a hidden calendar returns zero events, which is indistinguishable from a calendar
+  that has none — and hiding the birthday calendar is exactly what a user does when it
+  clutters their day view. Nothing in the TypeScript types, the docs, or the `Calendar`
+  object says this; `isVisible` is documented only as "indicates whether the OS displays
+  events on this calendar", which reads as a display hint rather than a query filter. **This
+  already produced one wrong conclusion**: a device probe reported 0 birthday events across
+  573, while `Contacts' important dates` and the primary Google calendar were both
+  `isVisible: false` and therefore unreadable. Always print `isVisible` beside an event count
+  from this module, and never read a zero without it.
+
 - **`expo-calendar` cannot run in Expo Go, and names a calendar differently on each
   platform.** The module resolves `CalendarNext` at import and substitutes
   `ExpoGoCalendarNextStub` under Expo Go — every method of it throws, so unlike
@@ -124,9 +139,10 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   while `instanceId` differs per occurrence. And `listEvents` returns expanded instances that
   carry a populated `recurrenceRule` *and* the occurrence's own `startDate`, so that year is
   the occurrence's, never the birth year — this source could not fill `PartialDate.year` on
-  Android even if it had data. It had none: see *Sources that measured zero* in
-  `docs/00-design.md`, which is why calendar **import** is cut. Calendar **export** (step 8)
-  is unaffected, and these are the facts it inherits.
+  Android even if it had data. Whether it has any is still open — the first probe's zero was
+  a visibility artefact, see the constraint above and *What the free sources actually yielded*
+  in `docs/00-design.md`. Calendar **export** (step 8) is unaffected either way, and these are
+  the facts it inherits.
 
 - **`expo-contacts` disagrees with its own types in two places, and both typecheck.**
   `ContactsPermissionResponse.accessPrivileges` is declared optional and is `undefined` on
