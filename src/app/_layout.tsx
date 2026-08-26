@@ -72,6 +72,7 @@ function AppStack() {
       <Stack.Screen name="person/new" options={{ presentation: 'modal' }} />
       <Stack.Screen name="person/[id]" />
       <Stack.Screen name="import" />
+      <Stack.Screen name="triage/index" />
       <Stack.Screen name="message/[id]" />
     </Stack>
   );
