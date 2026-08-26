@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { toNewPersonRow, toPeople, toPerson, toPersonSafe, toPersonUpdate } from './mappers';
+import {
+  toNewPersonFromCandidate,
+  toNewPersonRow,
+  toPeople,
+  toPerson,
+  toPersonSafe,
+  toPersonUpdate,
+} from './mappers';
 import type { PersonRow } from './schema';
 
 const at = new Date(2026, 7, 9, 12, 0);
@@ -198,5 +205,45 @@ describe('tone', () => {
     );
 
     expect(created.tone).toBe('colleague');
+  });
+});
+
+describe('toNewPersonFromCandidate', () => {
+  it('carries the external id and source so a re-import can de-duplicate', () => {
+    const result = toNewPersonFromCandidate({
+      externalId: 'c1',
+      displayName: 'Ana Paula Silva',
+      birthday: { month: 11, day: 25, year: null },
+      source: 'contacts',
+    });
+
+    expect(result).toEqual({
+      displayName: 'Ana Paula Silva',
+      birthday: { month: 11, day: 25, year: null },
+      source: 'contacts',
+      externalId: 'c1',
+    });
+  });
+
+  it('keeps a known year', () => {
+    const result = toNewPersonFromCandidate({
+      externalId: 'c2',
+      displayName: 'Bruno Costa',
+      birthday: { month: 6, day: 13, year: 1994 },
+      source: 'contacts',
+    });
+
+    expect(result.birthday.year).toBe(1994);
+  });
+
+  it('throws on a candidate with no birthday, which is a caller bug', () => {
+    expect(() =>
+      toNewPersonFromCandidate({
+        externalId: 'c3',
+        displayName: 'Carla',
+        birthday: null,
+        source: 'contacts',
+      }),
+    ).toThrow();
   });
 });

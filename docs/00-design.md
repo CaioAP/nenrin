@@ -48,8 +48,11 @@ Facebook birthday export is dead (Graph API removed friend birthdays). Do not pl
 - Import from device contacts, including the iOS 18 limited-access path.
 - Import from device calendars (existing "Birthdays" calendars).
 - **Triage deck** — the core UX bet. A card stack of contacts with no known birthday:
-  large name, month+day pickers, big *Skip* and *Don't ask again*. Optimised so a birthday
-  you know costs one gesture and two taps. Year is optional throughout.
+  large name, month+day grids, swipe left to skip, swipe right to save, and *Don't ask
+  again* as a button because it is the only irreversible action on the card. A birthday you
+  know costs two taps and a swipe — the commit is explicit rather than firing on the day
+  tap, so nothing saves by surprise and the optional year stays reachable. Year is optional
+  throughout.
 - Local yearly notifications, configurable lead time (same day / 1 day / 1 week before).
 - Message generation — a small library of templates with `{name}`, `{age}`, relationship
   tone (family / close friend / colleague), copy-to-clipboard + native share sheet.

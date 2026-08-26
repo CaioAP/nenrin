@@ -7,6 +7,7 @@
  */
 
 import { type LeapDayPolicy, makePartialDate } from '@/domain/birthday';
+import type { ImportCandidate } from '@/domain/import';
 import type { Tone } from '@/domain/message';
 import type { Person } from '@/domain/person';
 import { type AppSettings, DEFAULT_SETTINGS } from '@/domain/settings';
@@ -90,6 +91,26 @@ export function toNewPersonRow(input: NewPerson, id: string, at: Date): NewPerso
     createdAt: at,
     updatedAt: at,
     deletedAt: null,
+  };
+}
+
+/**
+ * An import candidate as a person to write.
+ *
+ * Throws rather than skipping when the birthday is missing. The only valid input is the
+ * `ready` bucket, which is *defined* by having one — a candidate without a birthday reaching
+ * here means the caller passed the wrong bucket, and silently dropping it would hide that.
+ */
+export function toNewPersonFromCandidate(candidate: ImportCandidate): NewPerson {
+  if (!candidate.birthday) {
+    throw new Error(`Candidate ${candidate.externalId} has no birthday and cannot be imported`);
+  }
+
+  return {
+    displayName: candidate.displayName,
+    birthday: candidate.birthday,
+    source: candidate.source,
+    externalId: candidate.externalId,
   };
 }
 

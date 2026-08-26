@@ -1,6 +1,7 @@
 import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { ActivityIndicator, StyleSheet, useColorScheme } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -38,9 +39,17 @@ export default function RootLayout() {
   const { success, error } = useMigrations(db, migrations);
 
   return (
-    <ThemeProvider value={navigationTheme(colorScheme === 'dark' ? 'dark' : 'light')}>
-      {error ? <MigrationFailed error={error} /> : success ? <AppStack /> : <Starting />}
-    </ThemeProvider>
+    /*
+     * Required for any gesture below this point. Without it pan gestures silently do
+     * nothing on Android — no warning, no error, and check, lint, test and expo export all
+     * pass. expo-router re-exports this component for react-navigation's own stack
+     * internals, which is not the same as wrapping the app root.
+     */
+    <GestureHandlerRootView style={styles.root}>
+      <ThemeProvider value={navigationTheme(colorScheme === 'dark' ? 'dark' : 'light')}>
+        {error ? <MigrationFailed error={error} /> : success ? <AppStack /> : <Starting />}
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -62,6 +71,8 @@ function AppStack() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="person/new" options={{ presentation: 'modal' }} />
       <Stack.Screen name="person/[id]" />
+      <Stack.Screen name="import" />
+      <Stack.Screen name="triage/index" />
       <Stack.Screen name="message/[id]" />
     </Stack>
   );
@@ -95,6 +106,7 @@ function MigrationFailed({ error }: { error: Error }) {
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   centred: {
     flex: 1,
     alignItems: 'center',

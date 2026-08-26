@@ -1,0 +1,1 @@
+ALTER TABLE `skipped` ADD `kind` text DEFAULT 'refused' NOT NULL;

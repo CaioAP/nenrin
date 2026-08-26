@@ -28,6 +28,16 @@ export type HandledExternalIds = {
   skipped: ReadonlySet<string>;
 };
 
+/**
+ * Why a candidate is not in the deck.
+ *
+ * The deck passes over both kinds identically; only the "ask me again" path distinguishes
+ * them. The distinction is recorded at write time regardless, because it cannot be
+ * reconstructed later: once rows exist without it, "not now" and "never" are
+ * indistinguishable forever.
+ */
+export type SkipKind = 'deferred' | 'refused';
+
 export type Partitioned = {
   /** Has a real birthday and has never been seen. What "import everything" imports. */
   ready: ImportCandidate[];

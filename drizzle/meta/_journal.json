@@ -15,6 +15,13 @@
       "when": 1786497893633,
       "tag": "0001_naive_the_fury",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787705478581,
+      "tag": "0002_needy_caretaker",
+      "breakpoints": true
     }
   ]
 }

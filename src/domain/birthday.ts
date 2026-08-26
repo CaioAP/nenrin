@@ -39,7 +39,7 @@ const LATEST_BIRTH_YEAR = 2200;
 const isLeapYear = (year: number) => (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 
 /** Days in a month, treating February as 29 so leap-day birthdays are storable. */
-const maxDayInMonth = (month: number) =>
+export const maxDayInMonth = (month: number) =>
   [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
 
 export function isValidMonthDay(month: number, day: number): boolean {
