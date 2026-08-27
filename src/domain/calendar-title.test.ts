@@ -8,7 +8,7 @@ describe('parseBirthdayTitle', () => {
   });
 
   it('accepts the curly apostrophe Google actually writes', () => {
-    expect(parseBirthdayTitle("Mãe's birthday")).toEqual({ displayName: 'Mãe', confident: true });
+    expect(parseBirthdayTitle('Mãe’s birthday')).toEqual({ displayName: 'Mãe', confident: true });
   });
 
   it('keeps everything in the name, emoji included', () => {

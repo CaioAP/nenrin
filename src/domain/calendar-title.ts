@@ -50,8 +50,8 @@ const BIRTHDAY_WORDS = [
  * tries to identify what a name looks like; the user is going to see it in an editable field.
  */
 const NAME_PATTERNS = [
-  /^(.+)['']s\s+birthday$/i,
-  /^(.+)['']\s+birthday$/i,
+  /^(.+)['’]s\s+birthday$/i,
+  /^(.+)['’]\s+birthday$/i,
   /^anivers[áa]rio\s+de\s+(.+)$/i,
   /^niver\s+de\s+(.+)$/i,
   /^cumplea[ñn]os\s+de\s+(.+)$/i,
