@@ -1,4 +1,4 @@
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
@@ -10,9 +10,12 @@ import { Spacing } from '@/constants/theme';
 import { createPerson } from '@/db/people';
 import { skipContact } from '@/db/skipped';
 import { EMPTY_PERSON_DRAFT, type PersonDraft, parsePersonDraft } from '@/domain/draft';
+import { cardsFor, type ImportCandidate } from '@/domain/import';
+import type { PersonSource } from '@/domain/person';
 import { advance, currentCard, makeDeck, progress, type TriageAction } from '@/domain/triage';
 import { useSourceScan } from '@/hooks/use-source-scan';
 import { useTheme } from '@/hooks/use-theme';
+import { calendarSource } from '@/sources/calendar';
 import { contactsSource } from '@/sources/contacts';
 
 /**
@@ -25,12 +28,37 @@ import { contactsSource } from '@/sources/contacts';
  * Every action writes immediately. Batching to the end would mean fewer writes and forty
  * ways to lose forty cards of work.
  */
+
+/**
+ * A card's own answer, as an editable draft.
+ *
+ * Contacts cards arrive with no date and this is just their name. Calendar cards arrive with
+ * both, and the user is confirming rather than entering — so the date is pre-filled and the
+ * name is pre-filled and correctable.
+ */
+function draftFromCandidate(candidate: ImportCandidate): PersonDraft {
+  return {
+    ...EMPTY_PERSON_DRAFT,
+    displayName: candidate.displayName,
+    month: candidate.birthday?.month ?? null,
+    day: candidate.birthday?.day ?? null,
+    year: candidate.birthday?.year == null ? '' : String(candidate.birthday.year),
+  };
+}
+
 export default function TriageScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { scan, rescan } = useSourceScan(contactsSource);
+  // Defaults to contacts, so `/triage` with no param keeps working — including a link saved
+  // before this route took a param at all.
+  const { source: raw } = useLocalSearchParams<{ source?: string }>();
+  const source: PersonSource = raw === 'calendar' ? 'calendar' : 'contacts';
+  const birthdaySource = source === 'calendar' ? calendarSource : contactsSource;
+
+  const { scan, rescan } = useSourceScan(birthdaySource);
   const [cursor, setCursor] = useState(0);
   const [draft, setDraft] = useState<PersonDraft>(EMPTY_PERSON_DRAFT);
+  const [seededFor, setSeededFor] = useState<string | null>(null);
   const [writeFailure, setWriteFailure] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -38,14 +66,16 @@ export default function TriageScreen() {
 
   const deck = useMemo(() => {
     if (scan.state !== 'ready') return null;
-    return makeDeck(scan.result.partitioned.needsBirthday);
-  }, [scan]);
+    return makeDeck(cardsFor(source, scan.result.partitioned));
+  }, [scan, source]);
 
   if (scan.state === 'failed') {
     return (
       <ThemedView style={styles.centred}>
         <Stack.Screen options={{ title: 'Triage' }} />
-        <ThemedText type="subtitle">Could not read your contacts</ThemedText>
+        <ThemedText type="subtitle">
+          {source === 'calendar' ? 'Could not read your calendars' : 'Could not read your contacts'}
+        </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.centredText}>
           {scan.error.message}
         </ThemedText>
@@ -67,10 +97,13 @@ export default function TriageScreen() {
     return (
       <ThemedView style={styles.centred}>
         <Stack.Screen options={{ title: 'Triage' }} />
-        <ThemedText type="subtitle">Contacts are off</ThemedText>
+        <ThemedText type="subtitle">
+          {source === 'calendar' ? 'Calendars are off' : 'Contacts are off'}
+        </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.centredText}>
-          Nenrin cannot read your address book. Everything else still works — you can add people by
-          hand, and turn contacts on later in your device settings.
+          {source === 'calendar'
+            ? 'Nenrin cannot read your calendars. Everything else still works — you can add people by hand, and turn calendars on later in your device settings.'
+            : 'Nenrin cannot read your address book. Everything else still works — you can add people by hand, and turn contacts on later in your device settings.'}
         </ThemedText>
         <ActionButton label="Go back" onPress={() => router.back()} />
       </ThemedView>
@@ -79,6 +112,20 @@ export default function TriageScreen() {
 
   const state = { cards: deck.cards, cursor };
   const card = currentCard(state);
+
+  // Seeding during render, not in an effect. An effect would paint one frame with the
+  // *previous* card's date still in the fields, and on a deck the user is flicking through
+  // that frame is visible. React re-runs the body before committing, so nothing reaches the
+  // screen half-seeded.
+  //
+  // This is also the only reset there is: `nextCard` no longer clears the draft, so there is
+  // one place a card's draft comes from and no way for one card's edits to leak into the
+  // next.
+  if (card && seededFor !== card.externalId) {
+    setSeededFor(card.externalId);
+    setDraft(draftFromCandidate(card));
+  }
+
   const peek = currentCard(advance(state));
   const { done, total } = progress(state);
 
@@ -94,10 +141,10 @@ export default function TriageScreen() {
     );
   }
 
-  const parsed = parsePersonDraft(
-    { ...draft, displayName: card.displayName },
-    new Date().getFullYear(),
-  );
+  // No `displayName: card.displayName` override any more. The draft is seeded from the card
+  // and, for calendar cards, is the thing the user edits — overriding it here would validate
+  // the parsed title while saving something else.
+  const parsed = parsePersonDraft(draft, new Date().getFullYear());
   const canSave = parsed.ok;
 
   // Derived, not stored: a stored validation message goes stale the moment the user picks
@@ -108,7 +155,6 @@ export default function TriageScreen() {
 
   const nextCard = () => {
     setCursor(advance(state).cursor);
-    setDraft(EMPTY_PERSON_DRAFT);
     setWriteFailure(null);
     setShowValidation(false);
   };
@@ -122,15 +168,15 @@ export default function TriageScreen() {
         await createPerson({
           displayName: parsed.value.displayName,
           birthday: parsed.value.birthday,
-          source: 'contacts',
+          // `source`, not 'contacts'. The hardcoded version typechecks, runs, and files
+          // every calendar person under contacts — which breaks de-duplication silently:
+          // `listExternalIdsBySource('calendar')` would never find them, so the same ten
+          // people would be dealt again on every scan.
+          source,
           externalId: card.externalId,
         });
       } else {
-        await skipContact(
-          'contacts',
-          card.externalId,
-          action === 'refuse' ? 'refused' : 'deferred',
-        );
+        await skipContact(source, card.externalId, action === 'refuse' ? 'refused' : 'deferred');
       }
       nextCard();
     } catch (cause) {
@@ -177,7 +223,12 @@ export default function TriageScreen() {
          */}
         <TriageCard
           key={`${card.externalId}:${attempt}`}
-          displayName={card.displayName}
+          displayName={draft.displayName}
+          onChangeName={
+            source === 'calendar'
+              ? (displayName) => setDraft((current) => ({ ...current, displayName }))
+              : undefined
+          }
           draft={draft}
           onChangeDraft={setDraft}
           onAction={handle}
