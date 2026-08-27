@@ -8,8 +8,9 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { createFromCandidates } from '@/db/people';
 import { clearDeferred, countDeferred } from '@/db/skipped';
-import { useContactScan } from '@/hooks/use-contact-scan';
+import { useSourceScan } from '@/hooks/use-source-scan';
 import { useTheme } from '@/hooks/use-theme';
+import { contactsSource } from '@/sources/contacts';
 
 /**
  * Where an import starts.
@@ -22,7 +23,7 @@ import { useTheme } from '@/hooks/use-theme';
 export default function ImportScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { scan, rescan } = useContactScan();
+  const { scan, rescan } = useSourceScan(contactsSource);
   const [importing, setImporting] = useState(false);
   const [imported, setImported] = useState<number | null>(null);
   const [deferred, setDeferred] = useState(0);
@@ -63,7 +64,7 @@ export default function ImportScreen() {
   const firstFocus = useRef(true);
   useFocusEffect(
     useCallback(() => {
-      // `useContactScan` already scans on mount, so refreshing on the first focus would
+      // `useSourceScan` already scans on mount, so refreshing on the first focus would
       // read the address book twice for one entry. Only a *return* needs the refresh —
       // the deck runs while this screen stays mounted underneath it, so its counts and
       // its deferred total are both stale by the time the user comes back.

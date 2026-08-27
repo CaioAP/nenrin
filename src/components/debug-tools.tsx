@@ -5,9 +5,10 @@ import { Platform, StyleSheet, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { addSamplePeople, removeSamplePeople } from '@/db/sample-people';
-import { scanContacts } from '@/hooks/use-contact-scan';
 import { useForegroundTime } from '@/hooks/use-foreground-time';
+import { scanSource } from '@/hooks/use-source-scan';
 import { countPending, scheduleTestReminder } from '@/notifications/reminders';
+import { contactsSource } from '@/sources/contacts';
 import { ActionButton } from './action-button';
 import { ThemedText } from './themed-text';
 
@@ -230,14 +231,14 @@ const SCAN_SAMPLE_LIMIT = 5;
  * This exists because every module below it was otherwise unreachable. Nothing imported
  * `contacts.ts` or `db/skipped.ts` until the import UI is built in step 6 — and an orphan
  * module is not bundled, so `expo export` passing said nothing about either of them. Now the
- * button reaches both through `@/hooks/use-contact-scan`, which is what makes that gate mean
+ * button reaches both through `@/hooks/use-source-scan`, which is what makes that gate mean
  * something, and what makes the device checks runnable before a single screen exists.
  *
  * Expect a large candidate count and almost no birthdays. That is the correct result on an
  * address book that holds none, not a failure.
  */
 async function runContactScan(): Promise<string> {
-  const { access, partitioned } = await scanContacts();
+  const { access, partitioned } = await scanSource(contactsSource);
   if (access === 'none') {
     // Not an error path. The app must stay fully usable with contacts denied.
     return 'Access: none. Nothing scanned, nothing thrown — which is the point.';

@@ -11,8 +11,9 @@ import { createPerson } from '@/db/people';
 import { skipContact } from '@/db/skipped';
 import { EMPTY_PERSON_DRAFT, type PersonDraft, parsePersonDraft } from '@/domain/draft';
 import { advance, currentCard, makeDeck, progress, type TriageAction } from '@/domain/triage';
-import { useContactScan } from '@/hooks/use-contact-scan';
+import { useSourceScan } from '@/hooks/use-source-scan';
 import { useTheme } from '@/hooks/use-theme';
+import { contactsSource } from '@/sources/contacts';
 
 /**
  * The deck.
@@ -27,7 +28,7 @@ import { useTheme } from '@/hooks/use-theme';
 export default function TriageScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { scan, rescan } = useContactScan();
+  const { scan, rescan } = useSourceScan(contactsSource);
   const [cursor, setCursor] = useState(0);
   const [draft, setDraft] = useState<PersonDraft>(EMPTY_PERSON_DRAFT);
   const [writeFailure, setWriteFailure] = useState<string | null>(null);

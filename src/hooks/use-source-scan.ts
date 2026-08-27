@@ -1,9 +1,9 @@
 /**
- * One scan of the address book, shared by the import screen and the debug panel.
+ * One scan of one source, shared by the import screen, the triage deck and the debug panel.
  *
- * The sequence — request access, fetch, read both handled sets, partition — was written
- * once in the debug panel and is now needed for real. Two copies would drift, and the one
- * that drifted would be the one nobody was watching.
+ * The sequence — request access, fetch, read both handled sets, partition — is identical for
+ * every source, which is why this takes a `BirthdaySource` rather than existing twice. Two
+ * copies would drift, and the one that drifted would be the one nobody was watching.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -11,8 +11,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { listExternalIdsBySource } from '@/db/people';
 import { listSkippedExternalIds } from '@/db/skipped';
 import { type Partitioned, partitionCandidates } from '@/domain/import';
-import { contactsSource } from '@/sources/contacts';
-import type { AccessLevel } from '@/sources/types';
+import type { AccessLevel, BirthdaySource } from '@/sources/types';
 
 export type ScanResult = {
   access: AccessLevel;
@@ -31,25 +30,30 @@ function nothingFound(): Partitioned {
 }
 
 /**
- * Runs the whole read path once.
+ * Runs the whole read path once, for one source.
+ *
+ * **Both database reads key off `source.id`.** They were hardcoded to `'contacts'` when
+ * there was one source; leaving them would partition calendar candidates against the
+ * contacts sets, so every calendar person would look new forever and nothing the user
+ * skipped would stay skipped. It typechecks perfectly.
  *
  * Access denied returns empty buckets rather than throwing. The app must stay fully usable
- * with contacts refused, so "no" is an ordinary answer here, not an error.
+ * with a source refused, so "no" is an ordinary answer here, not an error.
  */
-export async function scanContacts(): Promise<ScanResult> {
-  const access = await contactsSource.requestAccess();
+export async function scanSource(source: BirthdaySource): Promise<ScanResult> {
+  const access = await source.requestAccess();
   if (access === 'none') return { access, partitioned: nothingFound() };
 
-  const candidates = await contactsSource.fetchCandidates();
+  const candidates = await source.fetchCandidates();
   const [imported, skipped] = await Promise.all([
-    listExternalIdsBySource('contacts'),
-    listSkippedExternalIds('contacts'),
+    listExternalIdsBySource(source.id),
+    listSkippedExternalIds(source.id),
   ]);
 
   return { access, partitioned: partitionCandidates(candidates, { imported, skipped }) };
 }
 
-export type ContactScan =
+export type SourceScan =
   | { state: 'scanning' }
   | { state: 'ready'; result: ScanResult }
   | { state: 'failed'; error: Error };
@@ -58,9 +62,10 @@ export type ContactScan =
  * Whatever was thrown, as an Error worth showing someone.
  *
  * `String(value)` on a rejection shaped `{ code, message }` — which is what an RN bridge
- * call, expo-contacts or expo-sqlite actually produces — yields "[object Object]", and the
- * import screen puts `error.message` on screen verbatim. So the one case that most needs
- * its message preserved is exactly the one a bare `String()` throws away.
+ * call, expo-contacts, expo-calendar or expo-sqlite actually produces — yields
+ * "[object Object]", and the import screen puts `error.message` on screen verbatim. So the
+ * one case that most needs its message preserved is exactly the one a bare `String()` throws
+ * away.
  */
 function asError(value: unknown): Error {
   if (value instanceof Error) return value;
@@ -77,9 +82,13 @@ function asError(value: unknown): Error {
  *
  * `rescan` exists because both screens change what the scan would return — importing the
  * ready bucket, or handling a card — and a stale count on screen is worse than a spinner.
+ *
+ * `source` belongs in the dependency list because it really is one: every adapter is a
+ * module-level constant, so the identity is stable, and a screen that switches sources gets
+ * a fresh scan rather than the previous source's buckets.
  */
-export function useContactScan(): { scan: ContactScan; rescan: () => void } {
-  const [scan, setScan] = useState<ContactScan>({ state: 'scanning' });
+export function useSourceScan(source: BirthdaySource): { scan: SourceScan; rescan: () => void } {
+  const [scan, setScan] = useState<SourceScan>({ state: 'scanning' });
   const [nonce, setNonce] = useState(0);
 
   // `nonce` is not read in the body — it exists only so `rescan` can force this effect to
@@ -89,7 +98,7 @@ export function useContactScan(): { scan: ContactScan; rescan: () => void } {
     let cancelled = false;
     setScan({ state: 'scanning' });
 
-    scanContacts()
+    scanSource(source)
       .then((result) => {
         if (!cancelled) setScan({ state: 'ready', result });
       })
@@ -101,7 +110,7 @@ export function useContactScan(): { scan: ContactScan; rescan: () => void } {
     return () => {
       cancelled = true;
     };
-  }, [nonce]);
+  }, [source, nonce]);
 
   const rescan = useCallback(() => setNonce((n) => n + 1), []);
 
