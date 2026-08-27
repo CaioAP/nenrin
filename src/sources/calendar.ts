@@ -22,9 +22,9 @@ import type { AccessLevel, BirthdaySource } from './types';
 /**
  * How far forward to read, in days.
  *
- * One year exactly. A yearly birthday falls inside that window once; a longer one returns
- * the same person twice under one `id`, and the second copy would look like a duplicate the
- * user has to skip.
+ * One year exactly: the narrowest window that catches every yearly birthday. It is not
+ * narrow enough to guarantee each is caught *only* once — see the de-duplication in
+ * `fetchCandidates` — and a longer one would return far more people twice.
  */
 const WINDOW_DAYS = 365;
 
@@ -66,7 +66,28 @@ export const calendarSource: BirthdaySource = {
       to,
     );
 
-    return events.flatMap(toCandidate);
+    // De-duplicated by `externalId`, because one 365-day read can return the same birthday
+    // twice.
+    //
+    // `listEvents` matches instances that *overlap* the window, not only those that start
+    // inside it. So a birthday falling on today comes back once for today's occurrence —
+    // which began at midnight, before `from`, and has not ended yet — and again for next
+    // year's, which starts exactly 365 days later and so lands before `to` whenever no
+    // 29 February intervenes. Both carry the same `event.id`.
+    //
+    // That matters downstream rather than here: both land in `ready`, the deck deals the
+    // person twice, and `person_external_idx` is a plain index rather than a unique one, so
+    // saving both writes two rows for one person with nothing to complain.
+    //
+    // Deduping rather than narrowing the window on purpose. The boundary argument would
+    // have to hold on two platforms whose expansion semantics differ, and iOS's EventKit
+    // predicate has not been measured. An id seen twice is one person on either.
+    const seen = new Set<string>();
+    return events.flatMap(toCandidate).filter((candidate) => {
+      if (seen.has(candidate.externalId)) return false;
+      seen.add(candidate.externalId);
+      return true;
+    });
   },
 };
 
