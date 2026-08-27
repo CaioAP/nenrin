@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { type ImportCandidate, partitionCandidates } from './import';
+import { cardsFor, type ImportCandidate, partitionCandidates } from './import';
 
 const candidate = (over: Partial<ImportCandidate> = {}): ImportCandidate => ({
   externalId: 'c1',
@@ -91,5 +91,36 @@ describe('partitionCandidates', () => {
   it('handles an empty scan', () => {
     const result = partitionCandidates([], nothingHandled);
     expect(result).toEqual({ ready: [], needsBirthday: [], alreadyKnown: [] });
+  });
+});
+
+describe('cardsFor', () => {
+  const partitioned = {
+    ready: [candidate({ externalId: 'r1', displayName: 'Has A Date' })],
+    needsBirthday: [candidate({ externalId: 'n1', displayName: 'No Date', birthday: null })],
+    alreadyKnown: [candidate({ externalId: 'k1', displayName: 'Known' })],
+  };
+
+  it('deals the contacts deck the candidates with no birthday', () => {
+    expect(cardsFor('contacts', partitioned).map((c) => c.displayName)).toEqual(['No Date']);
+  });
+
+  it('deals the calendar deck the candidates that already have one', () => {
+    // Not a contradiction of `ready`. `ready` means "has a date", not "import without
+    // asking" — a calendar name is parsed out of free text and the duplicates are real, so
+    // every one of them gets confirmed.
+    expect(cardsFor('calendar', partitioned).map((c) => c.displayName)).toEqual(['Has A Date']);
+  });
+
+  it('never deals what is already known, from either source', () => {
+    const dealt = [...cardsFor('contacts', partitioned), ...cardsFor('calendar', partitioned)];
+    expect(dealt.map((c) => c.externalId)).not.toContain('k1');
+  });
+
+  it('returns nothing for the sources that have no deck', () => {
+    // `manual` and `ask-link` are real members of PersonSource that no deck can be opened
+    // for. Empty rather than a throw: honest about it without giving a screen a way to crash.
+    expect(cardsFor('manual', partitioned)).toEqual([]);
+    expect(cardsFor('ask-link', partitioned)).toEqual([]);
   });
 });

@@ -75,3 +75,28 @@ export function partitionCandidates(
 
   return result;
 }
+
+/**
+ * Which bucket the deck deals, per source. `manual` and `ask-link` never reach a deck.
+ *
+ * A function beside the partitioner rather than a flag inside it. `partitionCandidates` is
+ * shared by every source and its bucket names each mean one thing; a `confirmAll` option
+ * would push a per-source policy into it and make `ready` mean two things at once.
+ *
+ * The asymmetry is the point. Contacts arrive with names from the address book and dates the
+ * user entered, so `ready` is safe to write in one tap and only `needsBirthday` needs asking
+ * about. Calendar candidates arrive with a name parsed out of an event title and known
+ * duplicates — `Pai's birthday` appears twice on the test device — so every one of them is
+ * confirmed before anything is stored.
+ */
+export function cardsFor(source: PersonSource, partitioned: Partitioned): ImportCandidate[] {
+  switch (source) {
+    case 'contacts':
+      return partitioned.needsBirthday;
+    case 'calendar':
+      return partitioned.ready;
+    case 'manual':
+    case 'ask-link':
+      return [];
+  }
+}
