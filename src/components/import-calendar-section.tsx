@@ -61,7 +61,17 @@ export function ImportCalendarSection() {
     });
   }, []);
 
-  useEffect(readAside, [readAside]);
+  // Re-read whenever the scan settles, not only on mount.
+  //
+  // `hiddenCalendarTitles` opens with `getCalendarPermissions`, the non-prompting check —
+  // which answers "not granted" while `useSourceScan`'s own permission prompt is still on
+  // screen. A mount-only read therefore reports zero hidden calendars on a first run and
+  // never corrects itself: the `firstFocus` guard below suppresses the first focus refresh,
+  // and if every birthday is in a hidden calendar there is no button to navigate away from
+  // and come back to. The screen would say "No birthdays found in your calendars" — the one
+  // sentence the visibility trap makes a lie.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `scan.state` is the trigger, not a value read here
+  useEffect(readAside, [readAside, scan.state]);
 
   const refresh = useCallback(() => {
     setWriteError(null);

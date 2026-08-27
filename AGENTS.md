@@ -25,7 +25,8 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   in plain Node. If a change to `src/domain/` needs a simulator to verify, it is in the wrong
   file.
 - **Platform access lives behind an adapter** in `src/sources/`, all implementing the same
-  `BirthdaySource` interface. Adding a source is one new file.
+  `BirthdaySource` interface. Adding a source is one new adapter file; the screens still
+  branch per source today — see `src/sources/types.ts`.
 - **Every database write goes through a repository function in `src/db/`.** No screen touches
   the database directly — v2 hooks automatic backup into that one place.
 
@@ -162,6 +163,29 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   of them; the name has to be parsed out of the title, which is written in the *Google
   account's* language rather than the device locale (`"Mãe's birthday"` on a Portuguese
   phone). See *What the free sources actually yielded* in `docs/00-design.md`.
+
+- **All-day events are encoded in UTC on both platforms, but only one of them starts at UTC
+  midnight.** `partialDateFromAllDayStart` (`src/domain/calendar-date.ts`) decodes with UTC
+  getters, which is correct for Android — its all-day events genuinely are stored as UTC
+  midnight. iOS is the opposite: `expo-calendar`'s `ios/Conversions/Conversions.swift`
+  defines a module-wide `dateFormatter` pinned to `TimeZone(identifier: "UTC")`, and
+  `ios/Next/CalendarNextModule.swift`'s `Property("startDate")` renders `EKEvent.startDate`
+  through that formatter — but `EKEvent.startDate` is an absolute instant, and EventKit
+  begins an all-day event at *local* midnight, not UTC midnight. So on a device in UTC+9, a
+  25 January birthday's local midnight is `2027-01-24T15:00:00Z`, and formatting that instant
+  in UTC yields the 24th, not the 25th. The two bugs are mirror images: Android's UTC-midnight
+  encoding breaks under local getters for every user *west* of Greenwich (a negative offset
+  reads back a day early — the São Paulo case this file's doc comment already walks through),
+  while iOS's local-midnight-in-UTC encoding breaks under UTC getters for every user *east*
+  of Greenwich (any positive offset subtracts hours from local midnight and rolls back a
+  calendar day in UTC). A negative offset — São Paulo's UTC−3 among them — happens to decode
+  correctly on iOS today; a positive one, UTC+9 above, does not.
+  `partialDateFromAllDayStart` is Android-correct and iOS-wrong today. There is no iOS build
+  yet to confirm this against a device, only against the two Swift files above. Fixing it is
+  not a matter of swapping UTC getters for local ones — `src/domain/` must stay platform-free,
+  so the domain function needs an explicit "which midnight" argument, decided by
+  `Platform.OS` at the adapter boundary in `src/sources/calendar.ts`, not inside the domain
+  function itself.
 
 - **`expo-contacts` disagrees with its own types in two places, and both typecheck.**
   `ContactsPermissionResponse.accessPrivileges` is declared optional and is `undefined` on

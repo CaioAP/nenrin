@@ -18,6 +18,17 @@
  * `TZ=Europe/London` cannot check this file. London is UTC+0 in January, so local and UTC
  * agree; in July it is UTC+1, and UTC midnight reads as 01:00 on the *same* day. Both
  * directions are blind. Hence `npm run test:tz`.
+ *
+ * All of the above is Android's encoding, not a platform-neutral fact. On iOS,
+ * `expo-calendar` pins its date serializer to UTC and renders `EKEvent.startDate`, an
+ * absolute instant — but EventKit begins an all-day event at *local* midnight, not UTC
+ * midnight. Decoding that instant with UTC getters is therefore wrong on iOS for every
+ * positive UTC offset — east of Greenwich, the mirror image of the Android bug above, which
+ * breaks west of Greenwich instead. (A negative offset, São Paulo's UTC−3 included, happens
+ * to decode correctly on iOS; UTC+9 does not.) This function does not yet branch on platform —
+ * see the `expo-calendar` entry in AGENTS.md's Non-obvious constraints for the mechanism, the
+ * two Swift files that prove it, and why the fix belongs at the `src/sources/` adapter
+ * boundary rather than here.
  */
 
 import { makePartialDate, type PartialDate } from './birthday';
