@@ -253,8 +253,8 @@ impossible to bolt on later if v1 gets these wrong, and all three are nearly fre
    300 people before touching a real device.
 5. Contacts source adapter — full grant path, then the limited-access path.
 6. The triage deck. Iterate on gesture speed; this is the screen worth polishing.
-7. Calendar import adapter. **Measured as the highest-yield source on the test device —
-   see *What the free sources actually yielded*.**
+7. **Done.** Calendar import adapter. Measured as the highest-yield source on the test
+   device — see *What the free sources actually yielded*.
 8. Calendar export.
 9. Groups, message templates, settings.
 

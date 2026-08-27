@@ -42,9 +42,14 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   the past either fires instantly or is dropped by the OS.
 - **All date arithmetic is local-calendar arithmetic.** A birthday is a calendar day, not an
   instant. Nothing in `src/domain/` touches UTC.
-- **Tests pin `TZ=Europe/London`** (see the npm scripts). The dev machine is in São Paulo,
-  which has had no DST since 2019 — run the daylight-saving tests there and they pass
-  without ever crossing a transition.
+- **Tests run under two pinned time zones, and they check different things.** `npm test` pins
+  `TZ=Europe/London`, which is the one that crosses a DST transition — the dev machine is in
+  São Paulo, which has had no DST since 2019, so the daylight-saving tests would pass there
+  without ever crossing one. `npm run test:tz` pins `TZ=America/Sao_Paulo`, a fixed UTC−3, to
+  catch anything that decodes a calendar-sourced date through UTC instead of the local
+  calendar — that bug is invisible in London, whose offset was 0 or +1 for most of the test
+  suite's dates. Both must report the same test count; a change that only shows up in one
+  zone is not verified until it has run in both.
 - **Leap-day birthdays are real.** 29 February is storable, and `LeapDayPolicy` decides where
   it lands in a common year. Notifications resolve this themselves — they use one-shot DATE
   triggers on dates the domain already adjusted, so the OS is never asked what 29 February
@@ -244,9 +249,13 @@ the write permission arrives one step before calendar export needs it.
 
 ## Verifying
 
-`npm run check`, `npm run lint` and `npm test` cover the pure layers. They do **not** prove
-the app bundles — imports that only Metro resolves (the `.sql` migrations above) pass all
-three and still fail at runtime. Bundle it too:
+`npm run check`, `npm run lint`, `npm test` and `npm run test:tz` cover the pure layers.
+Run both test scripts, not just one: `npm test` pins `TZ=Europe/London` for the
+daylight-saving tests, `npm run test:tz` pins `TZ=America/Sao_Paulo` for anything that
+decodes a calendar-sourced date through UTC — each catches what the other zone cannot, and
+both must report the same count. None of the four prove the app bundles — imports that only
+Metro resolves (the `.sql` migrations above) pass all four and still fail at runtime. Bundle
+it too:
 
 ```bash
 npx expo export --platform android --output-dir /tmp/nenrin-export
@@ -305,7 +314,8 @@ npm start            # expo start
 npm run check        # tsc --noEmit
 npm run lint         # biome check .
 npm run lint:fix     # biome check --write .
-npm test             # vitest, TZ-pinned
+npm test             # vitest, TZ=Europe/London (DST transitions)
+npm run test:tz      # vitest, TZ=America/Sao_Paulo (UTC-decoded calendar dates)
 npm run db:generate  # drizzle-kit generate
 ```
 
