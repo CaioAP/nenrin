@@ -16,6 +16,13 @@ jobs:
       - run: npm run lint
       - run: npm run test
 
+      # The same suite again in a negative-offset zone, in the same job — a suite nobody
+      # runs is worth nothing. Neither zone is sufficient alone. London has two DST
+      # transitions a year, which is what makes schedule.test.ts test something; São Paulo
+      # has had none since 2019 but is UTC−3, which is the only way to see a calendar
+      # all-day event decoded with local getters instead of UTC ones.
+      - run: npm run test:tz
+
       # Catches a schema change committed without regenerating the migrations. The app
       # applies the generated bundle, never src/db/schema.ts, so drift here means the
       # running app queries tables that were never created — and every other gate passes.
