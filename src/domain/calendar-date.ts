@@ -33,6 +33,6 @@ export function partialDateFromAllDayStart(startDate: string | Date): PartialDat
   //
   // The year is always null, and not because it is unknown: `startDate` is the occurrence
   // Android expanded (2027), never the original. `originalStartDate` would carry the real
-  // one and is iOS-only. Passing 2027 through would store someone born next year.
+  // one and is iOS-only. Passing 2027 through would store a person born next year.
   return makePartialDate(instant.getUTCMonth() + 1, instant.getUTCDate(), null);
 }
