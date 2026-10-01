@@ -1,4 +1,5 @@
 import type { ExpoCalendar, ExpoCalendarEvent } from 'expo-calendar';
+import * as Calendar from 'expo-calendar';
 import * as Contacts from 'expo-contacts';
 import { useCallback, useEffect, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
@@ -309,14 +310,12 @@ const PROBE_SHIFT_DAYS = 180;
  * native shared objects, and stringifying one prints `{}` while looking like it worked.
  */
 async function probeCalendars(): Promise<string> {
-  // Dynamic, not a module-scope import. `requireNativeModule('CalendarNext')` runs when
-  // `expo-calendar` is first evaluated, so a dev build without the native module throws
-  // there — and a module-scope import would put that throw in the path of every route that
-  // reaches this panel, which is the same shape as the `expo-notifications` crash recorded
-  // in AGENTS.md even though the cause differs. Inside the probe it costs one status line.
-  // (Expo Go is the benign case: the module substitutes a stub whose methods throw, so the
-  // import itself survives and only the calls below fail.)
-  const Calendar = await import('expo-calendar');
+  // A module-scope import, not `await import()`. In a dev build Metro serves a dynamic import
+  // as a separate bundle fetched from the dev server at the moment of the call — so the probe
+  // failed with "Could not load bundle" whenever the phone could not reach Metro, while every
+  // statically imported screen kept working from the bundle already on the device. The
+  // module-scope import is safe: `src/sources/calendar.ts` already imports `expo-calendar` at
+  // module scope on every path to the import screen (see its header for why).
 
   const permission = await Calendar.requestCalendarPermissions();
   if (!permission.granted) {
