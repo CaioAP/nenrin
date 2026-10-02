@@ -48,7 +48,7 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": "Nenrin reads your calendars so it can find birthdays already saved there, instead of asking you to type them in again.",
+          "calendarPermission": "Nenrin reads your calendars to find birthdays already saved there, and, if you ask it to, adds your birthdays to a calendar of their own.",
           "remindersPermission": false
         }
       ]

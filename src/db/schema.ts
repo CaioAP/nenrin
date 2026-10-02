@@ -136,6 +136,40 @@ export const settings = sqliteTable('settings', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(now),
 });
 
+/**
+ * Calendar export's own state, as a single row pinned to id 1.
+ *
+ * Not columns on `settings`, though it is a preference the user sets. `settings.updatedAt`
+ * feeds `Schedulable.knownSince`, and a newer `knownSince` licenses the scheduler to catch up
+ * reminders whose moment already passed — so toggling export through `updateSettings` would
+ * re-send a reminder that fired this morning. Same trap `setTone` documents in `people.ts`.
+ */
+export const calendarExport = sqliteTable('calendar_export', {
+  id: integer('id').primaryKey().default(1),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+  /** The device calendar Nenrin created and owns. Null until the first sync creates it. */
+  calendarId: text('calendar_id'),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(now),
+});
+
+/**
+ * Every event Nenrin has written into its calendar, and what it was written from.
+ *
+ * The app cannot ask the calendar what it holds: on Android `expo-calendar` filters every
+ * event query on the calendar being visible, so a user who hides Nenrin's calendar would make
+ * it look empty and get every birthday written a second time. This table is the record
+ * instead, and `fingerprint` is how a sync tells a still-correct event from a stale one.
+ *
+ * No foreign key to `person`: deletes are soft, so a removed person's row stays, and this
+ * table must still say which event to take out of the calendar for them.
+ */
+export const exportedEvent = sqliteTable('exported_event', {
+  eventId: text('event_id').primaryKey(),
+  personId: text('person_id').notNull(),
+  fingerprint: text('fingerprint').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now),
+});
+
 export type PersonRow = typeof person.$inferSelect;
 export type NewPersonRow = typeof person.$inferInsert;
 export type GroupRow = typeof group.$inferSelect;

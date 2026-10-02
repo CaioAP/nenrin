@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { ActionButton } from '@/components/action-button';
+import { CalendarExportSection } from '@/components/calendar-export-section';
 import { Chip } from '@/components/chip';
 import { DebugTools } from '@/components/debug-tools';
 import { NotificationPermission } from '@/components/notification-permission';
@@ -71,6 +72,8 @@ export default function SettingsScreen() {
             />
           ))}
         </Section>
+
+        <CalendarExportSection />
 
         <ThemedText type="small" themeColor="textSecondary">
           Nenrin stores everything on this device. Nothing is sent anywhere.

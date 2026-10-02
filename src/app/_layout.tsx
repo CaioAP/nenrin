@@ -7,6 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, Spacing } from '@/constants/theme';
 import { db, migrations } from '@/db/client';
+import { useCalendarExportSync } from '@/export/use-calendar-export';
 import { useNotificationTap } from '@/notifications/use-notification-tap';
 import { useReminders } from '@/notifications/use-reminders';
 
@@ -59,11 +60,13 @@ export default function RootLayout() {
  * The add and edit screens push over the tab bar. With `Tabs` at the root, every route file
  * outside the declared screens would silently become another tab.
  *
- * `useReminders` lives here rather than in the root component because it queries `person`
- * and `settings`. Above this point the migrations may not have run yet.
+ * `useReminders` and `useCalendarExportSync` live here rather than in the root component
+ * because they query `person` and `settings`. Above this point the migrations may not have
+ * run yet.
  */
 function AppStack() {
   useReminders();
+  useCalendarExportSync();
   useNotificationTap();
 
   return (

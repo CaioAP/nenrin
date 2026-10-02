@@ -54,9 +54,12 @@ ask-link. Anything that does not reduce entry cost is a side feature.
 - **Leap-day birthdays are real.** 29 February is storable, and `LeapDayPolicy` decides where
   it lands in a common year. Notifications resolve this themselves — they use one-shot DATE
   triggers on dates the domain already adjusted, so the OS is never asked what 29 February
-  means. **Calendar export has the same question still open**: a yearly `RRULE` on 29 February
-  may resolve to the 28th, the 1st, or never fire, and only a device can say which. Pin the
-  behaviour explicitly when step 8 lands rather than trusting the default.
+  means. **Calendar export avoids the question the same way**: a yearly `RRULE` on 29 February
+  is skipped in common years under RFC 5545, and `expo-calendar`'s Android recurrence carries
+  only frequency, interval, count and end date, so `BYMONTHDAY=-1` is iOS-only. Leap-day
+  birthdays therefore export as one-shot events over a sliding eight-year horizon, on dates
+  `occurrenceInYear` already resolved under the user's policy; everyone else gets one yearly
+  event. See `src/domain/calendar-export.ts`.
 - **Notifications use DATE triggers, never YEARLY, and only cover a horizon.** A recurring
   trigger cannot express what `armWindow` produces — lead time moves a reminder off the
   birthday, a long lead clamps to the next slot, and a reminder with no useful moment left is
@@ -187,6 +190,24 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   `Platform.OS` at the adapter boundary in `src/sources/calendar.ts`, not inside the domain
   function itself.
 
+- **Calendar export writes into a calendar Nenrin creates, and never asks the calendar what it
+  holds.** Every event query on Android carries the `VISIBLE = 1` clause above, so a user who
+  hid "Nenrin birthdays" would make it read as empty and get every birthday written again on
+  the next sync. The `exported_event` table is the record instead, written one row per event
+  straight after the calendar accepts it, and `planExportSync` diffs against it by
+  fingerprint. `getCalendars` has no such filter, which is what lets a sync tell a hidden
+  calendar (keep writing) from a deleted one (the user switched export off — do not recreate
+  it). The write side has the same midnight fork as the read side, met explicitly:
+  `allDayRange` takes an `AllDayEncoding` chosen from `Platform.OS` in `src/export/calendar.ts`
+  — Android needs UTC midnight *and* `timeZone: 'UTC'`, or `expo-calendar` stamps the device
+  zone on the row. Two more traps there: `ExpoCalendarEvent.get` returns the first occurrence
+  with an iOS span of `.thisEvent`, so deleting a yearly series needs
+  `getOccurrenceSync({ futureEvents: true })` first or only one year goes; and export state
+  lives in its own `calendar_export` table rather than on `settings`, because bumping
+  `settings.updatedAt` moves every person's `knownSince` and re-sends reminders that already
+  fired. The calendar importer skips the export calendar (`isExportCalendar`), by `name` on
+  Android and by title on iOS.
+
 - **`expo-contacts` disagrees with its own types in two places, and both typecheck.**
   `ContactsPermissionResponse.accessPrivileges` is declared optional and is `undefined` on
   Android and pre-iOS-18 — it is an iOS 18 concept and appears nowhere in the Android native
@@ -267,9 +288,8 @@ the merged result:
 npx expo config --type introspect | grep -E "permissions:|UsageDescription" -A10
 ```
 
-One thing that entry cannot fix: `withCalendar` adds `READ_CALENDAR` **and**
-`WRITE_CALENDAR` together, with no prop to omit the write half. Calendar import only reads;
-the write permission arrives one step before calendar export needs it.
+`withCalendar` adds `READ_CALENDAR` **and** `WRITE_CALENDAR` together, with no prop to omit
+either half. Calendar export uses the write half; the usage string says so.
 
 ## Verifying
 

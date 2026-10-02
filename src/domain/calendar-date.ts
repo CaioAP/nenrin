@@ -47,3 +47,58 @@ export function partialDateFromAllDayStart(startDate: string | Date): PartialDat
   // one and is iOS-only. Passing 2027 through would store a person born next year.
   return makePartialDate(instant.getUTCMonth() + 1, instant.getUTCDate(), null);
 }
+
+/**
+ * A calendar day with a known year — the shape an event needs and a `PartialDate` may lack.
+ */
+export type CalendarDay = { year: number; month: number; day: number };
+
+/**
+ * Which midnight a platform's all-day event starts at, as an absolute instant.
+ *
+ * - `'utc-midnight'` — Android. `CalendarContract` requires an all-day event's `DTSTART` to be
+ *   UTC midnight with `EVENT_TIMEZONE` set to UTC; the provider truncates anything else to
+ *   the UTC day, which for a local midnight east of Greenwich is the day before.
+ * - `'local-midnight'` — iOS. EventKit begins an all-day event at local midnight and reads
+ *   the day back in the device's own zone.
+ *
+ * The same fork `partialDateFromAllDayStart` documents for reading, met from the writing side.
+ * The domain cannot know which platform it is on, so the adapter passes this in — chosen from
+ * `Platform.OS` in `src/export/calendar.ts`, never inside this file.
+ */
+export type AllDayEncoding = 'utc-midnight' | 'local-midnight';
+
+/**
+ * A calendar day → the start and end instants an all-day event for it is written with.
+ *
+ * Pure. The inverse of `partialDateFromAllDayStart`, and like it, this is encoding rather than
+ * arithmetic: the instants are a wire format for one calendar day.
+ *
+ * The end differs by convention as well as by zone:
+ *
+ * - Android's `DTEND` is exclusive, so a one-day event ends at the *next* UTC midnight. It
+ *   cannot equal the start either — `expo-calendar` derives a recurring event's `DURATION`
+ *   from the two, and a zero duration is an event that occupies no day.
+ * - EventKit stretches an all-day event over whole days itself, and an end at the next
+ *   midnight reads as a second day. So the end is the start. **Unverified on a device** —
+ *   there is no iOS build yet.
+ *
+ * `Date.UTC` and the local `Date` constructor both roll `day + 1` over a month or year end, so
+ * 31 December ends on 1 January without a branch here.
+ */
+export function allDayRange(
+  day: CalendarDay,
+  encoding: AllDayEncoding,
+): { start: Date; end: Date } {
+  const { year, month } = day;
+
+  if (encoding === 'utc-midnight') {
+    return {
+      start: new Date(Date.UTC(year, month - 1, day.day)),
+      end: new Date(Date.UTC(year, month - 1, day.day + 1)),
+    };
+  }
+
+  const start = new Date(year, month - 1, day.day);
+  return { start, end: start };
+}

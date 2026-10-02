@@ -17,6 +17,7 @@ import { Platform } from 'react-native';
 import { partialDateFromAllDayStart } from '@/domain/calendar-date';
 import { parseBirthdayTitle } from '@/domain/calendar-title';
 import type { ImportCandidate } from '@/domain/import';
+import { isExportCalendar } from '@/export/calendar';
 import type { AccessLevel, BirthdaySource } from './types';
 
 /**
@@ -47,7 +48,10 @@ export const calendarSource: BirthdaySource = {
   },
 
   async fetchCandidates(): Promise<ImportCandidate[]> {
-    const calendars = await Calendar.getCalendars(Calendar.EntityTypes.EVENT);
+    // Minus Nenrin's own export calendar, whose events are the people already saved here.
+    const calendars = (await Calendar.getCalendars(Calendar.EntityTypes.EVENT)).filter(
+      (calendar) => !isExportCalendar(calendar),
+    );
     if (calendars.length === 0) return [];
 
     // Every calendar, not a birthdays calendar. Birthday events live in the user's primary
@@ -155,7 +159,10 @@ export async function hiddenCalendarTitles(): Promise<string[]> {
   const calendars = await Calendar.getCalendars(Calendar.EntityTypes.EVENT);
   // `=== false`, not `!isVisible`. The field is `isVisible?: boolean` and is undefined where
   // the platform does not report it — which means "unknown", not "hidden".
+  //
+  // Nenrin's own calendar is left out: the importer skips it whether or not it is hidden, so
+  // a hidden one costs the user nothing and a warning about it would send them to fix nothing.
   return calendars
-    .filter((calendar) => calendar.isVisible === false)
+    .filter((calendar) => calendar.isVisible === false && !isExportCalendar(calendar))
     .map((calendar) => calendar.title);
 }
