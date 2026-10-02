@@ -8,9 +8,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { listExternalIdsBySource } from '@/db/people';
+import { listExternalIdsBySource, listPeople } from '@/db/people';
 import { listSkippedExternalIds } from '@/db/skipped';
-import { type Partitioned, partitionCandidates } from '@/domain/import';
+import { identityKey, type Partitioned, partitionCandidates } from '@/domain/import';
 import type { AccessLevel, BirthdaySource } from '@/sources/types';
 
 export type ScanResult = {
@@ -45,12 +45,21 @@ export async function scanSource(source: BirthdaySource): Promise<ScanResult> {
   if (access === 'none') return { access, partitioned: nothingFound() };
 
   const candidates = await source.fetchCandidates();
-  const [imported, skipped] = await Promise.all([
+  const [imported, skipped, saved] = await Promise.all([
     listExternalIdsBySource(source.id),
     listSkippedExternalIds(source.id),
+    listPeople(),
   ]);
+  // Every saved person, not just this source's: the same birthday arriving from contacts
+  // and from a calendar is one person.
+  const people = new Set(
+    saved.flatMap((person) => identityKey(person.displayName, person.birthday) ?? []),
+  );
 
-  return { access, partitioned: partitionCandidates(candidates, { imported, skipped }) };
+  return {
+    access,
+    partitioned: partitionCandidates(candidates, { imported, skipped, people }),
+  };
 }
 
 export type SourceScan =
