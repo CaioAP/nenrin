@@ -1,12 +1,15 @@
+import type { ExpoCalendar, ExpoCalendarEvent } from 'expo-calendar';
+import * as Calendar from 'expo-calendar';
 import * as Contacts from 'expo-contacts';
 import { useCallback, useEffect, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { addSamplePeople, removeSamplePeople } from '@/db/sample-people';
-import { scanContacts } from '@/hooks/use-contact-scan';
 import { useForegroundTime } from '@/hooks/use-foreground-time';
+import { scanSource } from '@/hooks/use-source-scan';
 import { countPending, scheduleTestReminder } from '@/notifications/reminders';
+import { contactsSource } from '@/sources/contacts';
 import { ActionButton } from './action-button';
 import { ThemedText } from './themed-text';
 
@@ -118,6 +121,12 @@ function DebugPanel() {
         onPress={() => run('Scanning', runContactScan)}
       />
 
+      <ActionButton
+        label="Probe calendars"
+        disabled={busy}
+        onPress={() => run('Probing', probeCalendars)}
+      />
+
       {status ? (
         <ThemedText type="small" themeColor="textSecondary">
           {status}
@@ -223,14 +232,14 @@ const SCAN_SAMPLE_LIMIT = 5;
  * This exists because every module below it was otherwise unreachable. Nothing imported
  * `contacts.ts` or `db/skipped.ts` until the import UI is built in step 6 — and an orphan
  * module is not bundled, so `expo export` passing said nothing about either of them. Now the
- * button reaches both through `@/hooks/use-contact-scan`, which is what makes that gate mean
+ * button reaches both through `@/hooks/use-source-scan`, which is what makes that gate mean
  * something, and what makes the device checks runnable before a single screen exists.
  *
  * Expect a large candidate count and almost no birthdays. That is the correct result on an
  * address book that holds none, not a failure.
  */
 async function runContactScan(): Promise<string> {
-  const { access, partitioned } = await scanContacts();
+  const { access, partitioned } = await scanSource(contactsSource);
   if (access === 'none') {
     // Not an error path. The app must stay fully usable with contacts denied.
     return 'Access: none. Nothing scanned, nothing thrown — which is the point.';
@@ -262,6 +271,239 @@ async function runContactScan(): Promise<string> {
     // Printed day/month so a month-base error is visible rather than plausible.
     withBirthday || 'No candidate carried a birthday.',
   ].join('\n');
+}
+
+/**
+ * How many matches to print. Kept small because the output is read on a phone screen with no
+ * way to copy it — the first run of this probe took seven screenshots, which is a probe that
+ * cannot be read. Everything below prints one line per calendar and expands only what the
+ * question is actually about.
+ */
+const EVENT_SAMPLE_LIMIT = 10;
+/** One year forward: every yearly birthday falls in the window exactly once. */
+const PROBE_WINDOW_DAYS = 365;
+/** Half a window, so the shifted read still overlaps the first by half a year. */
+const PROBE_SHIFT_DAYS = 180;
+
+/**
+ * Dumps what the device calendars actually are, because the SDK types cannot say.
+ *
+ * Three questions, none answerable off a device, all of which decide the shape of the
+ * calendar adapter:
+ *
+ * 1. **How is the birthday calendar identified?** `Calendar.type === 'birthdays'` is the
+ *    clean discriminator and it is **iOS only** — the field is absent on Android. Android
+ *    instead carries `name`, `ownerAccount` and `source.{name,type}`, so the fork is over
+ *    *what identifies a calendar*, exactly as `contacts.ts` forks over what identifies a
+ *    birthday. Matching the display title is the wrong answer on both platforms: it is the
+ *    user's locale, not a stable key.
+ * 2. **Is an event id stable between reads?** `externalId` is the whole de-duplication
+ *    contract — `partitionCandidates` and `person_external_idx` both hang off it. Android
+ *    documents `instanceId` as "volatile ... not guaranteed to always refer to the same
+ *    instance", which is a warning about `id` too. So this reads the same window twice and
+ *    compares, rather than trusting either field's doc comment.
+ * 3. **What does it yield?** The address book gave 0 birthdays across 433 contacts. If the
+ *    calendars give none either, that is a fact about the funnel, not about this code, and
+ *    it re-ranks the remaining steps.
+ *
+ * Every field is read by name rather than spread or `JSON.stringify`-ed whole: these are
+ * native shared objects, and stringifying one prints `{}` while looking like it worked.
+ */
+async function probeCalendars(): Promise<string> {
+  // A module-scope import, not `await import()`. In a dev build Metro serves a dynamic import
+  // as a separate bundle fetched from the dev server at the moment of the call — so the probe
+  // failed with "Could not load bundle" whenever the phone could not reach Metro, while every
+  // statically imported screen kept working from the bundle already on the device. The
+  // module-scope import is safe: `src/sources/calendar.ts` already imports `expo-calendar` at
+  // module scope on every path to the import screen (see its header for why).
+
+  const permission = await Calendar.requestCalendarPermissions();
+  if (!permission.granted) {
+    // A refusal and a missing manifest permission are the same result here: Android denies
+    // an undeclared permission with no prompt at all. `READ_CALENDAR` reaches the manifest
+    // because Expo auto-applies an autolinked module's config plugin — `app.json` naming
+    // `expo-calendar` only overrides the iOS copy — so a build carrying the package carries
+    // the permission. **No prompt at all** therefore means the build predates the package,
+    // not that the plugin entry is missing.
+    return [
+      `Permission not granted (status: ${permission.status}, canAskAgain: ${permission.canAskAgain}).`,
+      'A system prompt you dismissed is a refusal. No prompt at all means this build has no',
+      'READ_CALENDAR — check expo-calendar was installed when it was built.',
+    ].join('\n');
+  }
+
+  const calendars = await Calendar.getCalendars(Calendar.EntityTypes.EVENT);
+  if (calendars.length === 0) {
+    return `${Platform.OS}: permission granted, zero event calendars. Nothing to import from.`;
+  }
+
+  const from = new Date();
+  const to = addDays(from, PROBE_WINDOW_DAYS);
+  const ids = calendars.map((calendar) => calendar.id);
+
+  const events = await Calendar.listEvents(ids, from, to);
+
+  // A second read of the *same* window proves almost nothing: both calls hit one provider
+  // snapshot milliseconds apart, so they agree even when ids are unstable. Kept only as a
+  // sanity check that two identical queries answer identically.
+  const sameWindow = await Calendar.listEvents(ids, from, to);
+
+  // This is the test that can fail. Reading a window shifted by half its length re-runs the
+  // recurrence expansion over a different range, which is the thing Android's "volatile"
+  // warning about `instanceId` is really about. An id derived from the expansion changes;
+  // an id that is the provider's row does not. Compared over the overlap only, where both
+  // reads must contain the same events.
+  const shiftFrom = addDays(from, PROBE_SHIFT_DAYS);
+  const shifted = await Calendar.listEvents(ids, shiftFrom, addDays(to, PROBE_SHIFT_DAYS));
+  const inOverlap = (event: ExpoCalendarEvent) => {
+    const start = new Date(event.startDate).getTime();
+    return start >= shiftFrom.getTime() && start <= to.getTime();
+  };
+
+  const perCalendar = new Map<string, number>();
+  for (const event of events) {
+    perCalendar.set(event.calendarId, (perCalendar.get(event.calendarId) ?? 0) + 1);
+  }
+
+  // One line each. The full identity dump ran once and answered its question — on Android
+  // every `type` is null and the birthday calendar is keyed by `ownerAccount`. Re-printing
+  // eleven fields per calendar now only buries the counts.
+  const calendarLines = calendars.map(
+    (calendar) =>
+      `  ${calendar.isVisible ? '[shown]' : '[HIDDEN]'} ${clip(calendar.title)} | ${perCalendar.get(calendar.id) ?? 0}`,
+  );
+
+  // The single most misleading thing this probe can print. `listEvents` cannot see a hidden
+  // calendar at all, so a hidden one always reports zero events and looks identical to an
+  // empty one — which is how a first run concluded "no calendar carries a birthday" while
+  // the birthday calendar sat hidden. Counted and named, so the reading is never in doubt.
+  const hidden = calendars.filter((calendar) => calendar.isVisible === false);
+
+  // Expanded only for the calendars that claim to be about birthdays, because those are the
+  // ones whose identity fields the adapter would have to match on.
+  const birthdayCalendars = calendars.filter(looksLikeBirthdayCalendar);
+  const birthdayCalendarLines = birthdayCalendars.flatMap((calendar) => [
+    `  ${calendar.title}`,
+    `    name=${JSON.stringify(calendar.name ?? null)}`,
+    `    ownerAccount=${JSON.stringify(calendar.ownerAccount ?? null)}`,
+    `    source.type=${JSON.stringify(calendar.source?.type ?? null)}`,
+    `    type=${JSON.stringify(calendar.type ?? null)}`,
+    `    events=${perCalendar.get(calendar.id) ?? 0}`,
+  ]);
+
+  // The measurement this run exists for. The generated birthday calendar is derived from the
+  // address book, so it can hold nothing Contacts does not — but a birthday typed by hand
+  // into an ordinary calendar is a source Contacts genuinely does not have. This scans every
+  // event in every calendar, which is what the first run's twelve-calendar cap missed.
+  const birthdayCalendarIds = new Set(birthdayCalendars.map((calendar) => calendar.id));
+  // Both routes in, because a birthday reaches a phone two ways and they look nothing alike:
+  // entered in Contacts it lands in the generated calendar with no birthday word in its
+  // title, and typed straight into an ordinary calendar it has the word and no special
+  // calendar. Matching only one of them would report the other as absent.
+  const byTitle = events.filter(
+    (event) => looksLikeBirthdayEvent(event.title) || birthdayCalendarIds.has(event.calendarId),
+  );
+  const titleOf = (id: string) => calendars.find((calendar) => calendar.id === id)?.title ?? id;
+  const matchLines = byTitle.slice(0, EVENT_SAMPLE_LIMIT).flatMap((event) => [
+    `  ${JSON.stringify(event.title)} — ${clip(titleOf(event.calendarId))}`,
+    `    startDate=${formatProbeDate(event.startDate)} allDay=${event.allDay}`,
+    // The whole rule, not a yes/no. If a yearly birthday's rule is `{frequency:"yearly"}`
+    // and its startDate is this year, the birth year is unreachable from a windowed read —
+    // and that is the field calendar export has to reproduce in step 8.
+    `    recurrenceRule=${JSON.stringify(event.recurrenceRule)}`,
+    `    id=${JSON.stringify(event.id)} instanceId=${JSON.stringify(event.instanceId ?? null)}`,
+  ]);
+
+  return [
+    `${Platform.OS}, permission: ${permission.status}`,
+    `${calendars.length} calendars, ${events.length} events in ${PROBE_WINDOW_DAYS} days`,
+    `ids survive a ${PROBE_SHIFT_DAYS}-day shift: ${
+      idsOf(events.filter(inOverlap)) === idsOf(shifted.filter(inOverlap))
+        ? 'YES'
+        : 'NO — expansion-derived, needs a synthetic key'
+    } (same-window re-read: ${idsOf(events) === idsOf(sameWindow) ? 'agrees' : 'DISAGREES'})`,
+    '',
+    `BIRTHDAY EVENTS (title match or in a birthday calendar): ${byTitle.length} of ${events.length}`,
+    ...(matchLines.length > 0 ? matchLines : ['  (none — no calendar carries a birthday)']),
+    '',
+    `Birthday calendars (${birthdayCalendars.length}):`,
+    ...(birthdayCalendarLines.length > 0 ? birthdayCalendarLines : ['  (none)']),
+    '',
+    ...(hidden.length > 0
+      ? [
+          `⚠ ${hidden.length} of ${calendars.length} calendars are HIDDEN in the calendar app.`,
+          '  expo-calendar hardcodes `Instances.VISIBLE = 1` in both its APIs, so events in',
+          '  these are unreadable — a hidden calendar reports 0 and an empty one reports 0.',
+          `  Hidden: ${hidden.map((calendar) => clip(calendar.title)).join(', ')}`,
+          '',
+        ]
+      : []),
+    'All calendars — visibility | title | events:',
+    ...calendarLines,
+  ].join('\n');
+}
+
+/**
+ * Whether an event title claims to be a birthday, in the languages this phone might use.
+ *
+ * Deliberately loose, and the noise is the point of measuring rather than assuming:
+ * "aniversário" is a wedding or company anniversary as often as a birthday in Portuguese,
+ * and a match here is a candidate to look at, not a person to import. A count of zero is
+ * the only result this can deliver unambiguously — and zero is the result worth knowing.
+ *
+ * Its one match on a real device was `"Feriado- Confraternização Universal (Ano Novo)"`,
+ * because `niver` is a substring of *Universal*. Left in rather than tightened: a matcher
+ * loose enough to catch a public holiday and still find no birthday says more about the
+ * zero than a careful one would.
+ */
+function looksLikeBirthdayEvent(title: string): boolean {
+  const haystack = title.toLowerCase();
+  return [
+    'birthday',
+    'bday',
+    'b-day',
+    'anivers',
+    'niver',
+    'cumplea',
+    'geburtstag',
+    'compleanno',
+    'anniversaire',
+  ].some((token) => haystack.includes(token));
+}
+
+/** Meeting-room calendars have titles that wrap five lines on a phone. The count is what matters. */
+function clip(value: string): string {
+  return value.length > 38 ? `${value.slice(0, 37)}…` : value;
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+/** Sorted, because the question is whether the same *set* of ids came back, not the order. */
+function idsOf(events: readonly ExpoCalendarEvent[]): string {
+  return events
+    .map((event) => event.id)
+    .sort()
+    .join('|');
+}
+
+/**
+ * Only decides which calendar's events are worth printing. Deliberately not how the adapter
+ * will identify a birthday calendar — a display title is the device's locale, so this list
+ * is a guess that costs nothing when it misses and saves a device trip when it hits.
+ */
+function looksLikeBirthdayCalendar(calendar: ExpoCalendar): boolean {
+  if (calendar.type === 'birthdays') return true;
+  const haystack = `${calendar.title} ${calendar.name ?? ''}`.toLowerCase();
+  return ['birthday', 'anivers', 'geburtstag', 'cumplea', 'contacts'].some((token) =>
+    haystack.includes(token),
+  );
+}
+
+/** `startDate` is typed `string | Date` and the platforms disagree about which. */
+function formatProbeDate(value: string | Date): string {
+  return typeof value === 'string' ? value : value.toISOString();
 }
 
 const styles = StyleSheet.create({

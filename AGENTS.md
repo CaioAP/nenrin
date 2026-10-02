@@ -25,7 +25,8 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   in plain Node. If a change to `src/domain/` needs a simulator to verify, it is in the wrong
   file.
 - **Platform access lives behind an adapter** in `src/sources/`, all implementing the same
-  `BirthdaySource` interface. Adding a source is one new file.
+  `BirthdaySource` interface. Adding a source is one new adapter file; the screens still
+  branch per source today — see `src/sources/types.ts`.
 - **Every database write goes through a repository function in `src/db/`.** No screen touches
   the database directly — v2 hooks automatic backup into that one place.
 
@@ -42,9 +43,14 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   the past either fires instantly or is dropped by the OS.
 - **All date arithmetic is local-calendar arithmetic.** A birthday is a calendar day, not an
   instant. Nothing in `src/domain/` touches UTC.
-- **Tests pin `TZ=Europe/London`** (see the npm scripts). The dev machine is in São Paulo,
-  which has had no DST since 2019 — run the daylight-saving tests there and they pass
-  without ever crossing a transition.
+- **Tests run under two pinned time zones, and they check different things.** `npm test` pins
+  `TZ=Europe/London`, which is the one that crosses a DST transition — the dev machine is in
+  São Paulo, which has had no DST since 2019, so the daylight-saving tests would pass there
+  without ever crossing one. `npm run test:tz` pins `TZ=America/Sao_Paulo`, a fixed UTC−3, to
+  catch anything that decodes a calendar-sourced date through UTC instead of the local
+  calendar — that bug is invisible in London, whose offset was 0 or +1 for most of the test
+  suite's dates. Both must report the same test count; a change that only shows up in one
+  zone is not verified until it has run in both.
 - **Leap-day birthdays are real.** 29 February is storable, and `LeapDayPolicy` decides where
   it lands in a common year. Notifications resolve this themselves — they use one-shot DATE
   triggers on dates the domain already adjusted, so the OS is never asked what 29 February
@@ -100,6 +106,86 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   and convert fine; they just return nothing. Nothing in the TypeScript types says any of
   this: `check`, `lint` and `expo export` all pass, and the failure is a runtime rejection on
   a device.
+
+- **On Android, `expo-calendar` cannot read a calendar the user has unticked, and reports it
+  as empty.** Both APIs hardcode the same clause — `InstanceRepository.buildSelection` in the
+  next API and `buildSelectionForEventsQuery` in the legacy one both add
+  `CalendarContract.Instances.VISIBLE = 1` to the selection, with no option to omit it.
+  `VISIBLE` is the *calendar's* checkbox in the user's calendar app, not a property of any
+  event. So a hidden calendar returns zero events, which is indistinguishable from a calendar
+  that has none — and hiding the birthday calendar is exactly what a user does when it
+  clutters their day view. Nothing in the TypeScript types, the docs, or the `Calendar`
+  object says this; `isVisible` is documented only as "indicates whether the OS displays
+  events on this calendar", which reads as a display hint rather than a query filter. **This
+  already produced two wrong conclusions in a row**: a device probe reported 0 birthday events
+  across 573 while the primary Google calendar sat `isVisible: false`. Made visible, the same
+  phone returned ten real birthdays that had been there all along. Always print `isVisible`
+  beside an event count from this module, and never read a zero without it.
+
+  **`VISIBLE` belongs to whichever app manages calendars, and that is not necessarily the app
+  the user thinks.** On the Samsung test device the calendars read as ticked inside Google
+  Calendar while the provider had them hidden — Samsung Calendar owns the column there, and
+  Google Calendar keeps its checkboxes to itself. So a user can have a calendar switched on,
+  see its events every day, and have it be unreadable to this app. The import UI must say how
+  many calendars are hidden rather than reporting "no birthdays found", because the two are
+  indistinguishable from inside the API. `isVisible` is also **read-only from JavaScript**:
+  the Kotlin `CalendarUpdateRecord` accepts it, but `ModifiableCalendarProperties` is
+  `Pick<ExpoCalendar, 'color' | 'title'>`, so the app cannot fix this for the user.
+
+- **`expo-calendar` cannot run in Expo Go, and names a calendar differently on each
+  platform.** The module resolves `CalendarNext` at import and substitutes
+  `ExpoGoCalendarNextStub` under Expo Go — every method of it throws, so unlike
+  `expo-notifications` the *import* is safe and only the calls die. A dev build is required
+  either way. The fork that shapes the adapter is **which field identifies a calendar**:
+  `type === 'birthdays'` (`SourceType.BIRTHDAYS`) is **iOS only** and simply absent on
+  Android, which instead carries `name`, `ownerAccount`, `isPrimary` and
+  `source.{name,type}`. Matching the display `title` is wrong on both — that string is the
+  user's locale, not a key. Event ids fork too: `instanceId` is Android-only and documented
+  as "volatile ... not guaranteed to always refer to the same instance", while
+  `originalStartDate` is iOS-only. `externalId` is the whole de-duplication contract
+  (`partitionCandidates`, `person_external_idx`), so an id that changes between reads would
+  re-deal the same person on every scan, silently.
+
+  **Measured on a Samsung device, 2026-08-26** — `type` was `null` on all sixteen calendars,
+  confirming it is genuinely iOS-only rather than merely undocumented. The generated birthday
+  calendar there is `ownerAccount="local.samsungbirthday"`, and its `name` is `"Birthday"`
+  while its `title` is `"Contacts' important dates"` — one calendar, two different strings,
+  neither of them the other platform's. Event ids survived a 180-day window shift, so an
+  `id` **can** be an `externalId`; note it is the master row, repeating across occurrences,
+  while `instanceId` differs per occurrence. And `listEvents` returns expanded instances that
+  carry a populated `recurrenceRule` *and* the occurrence's own `startDate`, so that year is
+  the occurrence's, never the birth year — this source could not fill `PartialDate.year` on
+  Android even if it had data — confirmed on a device, where every birthday event's
+  `startDate` was the expanded occurrence (2027) beside a populated
+  `{"frequency":"yearly"}` rule. Birthday events also do **not** live in a birthdays calendar:
+  they sit in the user's primary calendar, and the "Birthdays" heading in the Google Calendar
+  app corresponds to nothing in `CalendarContract`. Matching on calendar identity finds none
+  of them; the name has to be parsed out of the title, which is written in the *Google
+  account's* language rather than the device locale (`"Mãe's birthday"` on a Portuguese
+  phone). See *What the free sources actually yielded* in `docs/00-design.md`.
+
+- **All-day events are encoded in UTC on both platforms, but only one of them starts at UTC
+  midnight.** `partialDateFromAllDayStart` (`src/domain/calendar-date.ts`) decodes with UTC
+  getters, which is correct for Android — its all-day events genuinely are stored as UTC
+  midnight. iOS is the opposite: `expo-calendar`'s `ios/Conversions/Conversions.swift`
+  defines a module-wide `dateFormatter` pinned to `TimeZone(identifier: "UTC")`, and
+  `ios/Next/CalendarNextModule.swift`'s `Property("startDate")` renders `EKEvent.startDate`
+  through that formatter — but `EKEvent.startDate` is an absolute instant, and EventKit
+  begins an all-day event at *local* midnight, not UTC midnight. So on a device in UTC+9, a
+  25 January birthday's local midnight is `2027-01-24T15:00:00Z`, and formatting that instant
+  in UTC yields the 24th, not the 25th. The two bugs are mirror images: Android's UTC-midnight
+  encoding breaks under local getters for every user *west* of Greenwich (a negative offset
+  reads back a day early — the São Paulo case this file's doc comment already walks through),
+  while iOS's local-midnight-in-UTC encoding breaks under UTC getters for every user *east*
+  of Greenwich (any positive offset subtracts hours from local midnight and rolls back a
+  calendar day in UTC). A negative offset — São Paulo's UTC−3 among them — happens to decode
+  correctly on iOS today; a positive one, UTC+9 above, does not.
+  `partialDateFromAllDayStart` is Android-correct and iOS-wrong today. There is no iOS build
+  yet to confirm this against a device, only against the two Swift files above. Fixing it is
+  not a matter of swapping UTC getters for local ones — `src/domain/` must stay platform-free,
+  so the domain function needs an explicit "which midnight" argument, decided by
+  `Platform.OS` at the adapter boundary in `src/sources/calendar.ts`, not inside the domain
+  function itself.
 
 - **`expo-contacts` disagrees with its own types in two places, and both typecheck.**
   `ContactsPermissionResponse.accessPrivileges` is declared optional and is `undefined` on
@@ -160,17 +246,40 @@ a user who granted access to a hand-picked subset looks exactly like a user who 
 No iOS build exists yet to say which branch a real build takes. Check this before trusting
 limited access on iOS 18+; it is a property of how the pod was compiled, not of app code.
 
-**iOS needs usage-description strings before it can ship.** `expo-contacts`,
-`expo-calendar` and `expo-notifications` contribute their Android permissions through
-autolinked manifests, so an Android build works with no config plugin entries at all. iOS
-has no equivalent — without `NSContactsUsageDescription` and `NSCalendarsUsageDescription`
-in `app.json`, the first access call crashes rather than prompting.
+**Config plugins arrive on their own; an `app.json` entry only passes them props.** Expo
+auto-applies the config plugin of every autolinked module, so `expo-contacts`,
+`expo-calendar` and `expo-notifications` put their Android permissions *and* their iOS
+usage-description strings into the merged manifest and `Info.plist` with no `plugins` entry
+at all — carrying the plugin's own generic English default copy. (Only `expo-notifications`
+declares permissions in its own `AndroidManifest.xml`; the other two get theirs from their
+plugin, which is why reading a module's manifest is not how you answer this.)
+
+So `expo-calendar` is listed for exactly two reasons, neither of them the permission:
+`calendarPermission` replaces "Allow nenrin to access your calendars" with copy that says
+why, and `remindersPermission: false` **deletes** `NSRemindersUsageDescription` and
+`NSRemindersFullAccessUsageDescription`. Nenrin never touches reminders, and shipping those
+strings would ask App Review to approve access the app does not use.
+
+Check what actually lands rather than reasoning about it from plugin source — this prints
+the merged result:
+
+```bash
+npx expo config --type introspect | grep -E "permissions:|UsageDescription" -A10
+```
+
+One thing that entry cannot fix: `withCalendar` adds `READ_CALENDAR` **and**
+`WRITE_CALENDAR` together, with no prop to omit the write half. Calendar import only reads;
+the write permission arrives one step before calendar export needs it.
 
 ## Verifying
 
-`npm run check`, `npm run lint` and `npm test` cover the pure layers. They do **not** prove
-the app bundles — imports that only Metro resolves (the `.sql` migrations above) pass all
-three and still fail at runtime. Bundle it too:
+`npm run check`, `npm run lint`, `npm test` and `npm run test:tz` cover the pure layers.
+Run both test scripts, not just one: `npm test` pins `TZ=Europe/London` for the
+daylight-saving tests, `npm run test:tz` pins `TZ=America/Sao_Paulo` for anything that
+decodes a calendar-sourced date through UTC — each catches what the other zone cannot, and
+both must report the same count. None of the four prove the app bundles — imports that only
+Metro resolves (the `.sql` migrations above) pass all four and still fail at runtime. Bundle
+it too:
 
 ```bash
 npx expo export --platform android --output-dir /tmp/nenrin-export
@@ -202,6 +311,26 @@ or `Link` to it) plus the typed-route union `tsc` generates, which only contains
 really exist. Reserve the sourcemap grep for modules outside `src/app/`, which is where it
 was derived and where it holds.
 
+**Nor does it work for anything reachable only under `__DEV__`.** `expo export` builds
+production, where `__DEV__` is `false`, `DebugTools` folds to `null` and the whole panel is
+eliminated — its string literals included, and with them any module it alone pulled in. A
+dynamic `import('expo-calendar')` inside a probe is absent from the production sourcemap for
+that reason, and so is `probeContacts`, which has run on a device. **The absence is the
+correct result** — debug code must not ship — so it is evidence of nothing either way. Ask
+Metro for the bundle the device will actually run instead:
+
+```bash
+npx expo start --port 8099 &
+curl -s 'http://127.0.0.1:8099/.expo/.virtual-metro-entry.bundle?platform=android&dev=true&minify=false' -o /tmp/dev.bundle
+grep -c -a -F 'expo-calendar/src/Calendar.ts' /tmp/dev.bundle
+```
+
+`dev=true` keeps `__DEV__` live and `minify=false` keeps the strings, so grepping for a
+module path *or* a literal both work — this is the one bundle where an identifier survives.
+Note the entry point is `.expo/.virtual-metro-entry.bundle`: `index.bundle` does not exist
+here, because `package.json` names `expo-router/entry` as `main`. (`expo export --dev`
+segfaults on this machine; it is not the way in.)
+
 ## Commands
 
 ```bash
@@ -209,7 +338,8 @@ npm start            # expo start
 npm run check        # tsc --noEmit
 npm run lint         # biome check .
 npm run lint:fix     # biome check --write .
-npm test             # vitest, TZ-pinned
+npm test             # vitest, TZ=Europe/London (DST transitions)
+npm run test:tz      # vitest, TZ=America/Sao_Paulo (UTC-decoded calendar dates)
 npm run db:generate  # drizzle-kit generate
 ```
 

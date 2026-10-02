@@ -36,6 +36,7 @@ const BLOCKED_CLAMP = 24;
  */
 export function TriageCard({
   displayName,
+  onChangeName,
   draft,
   onChangeDraft,
   onAction,
@@ -44,6 +45,16 @@ export function TriageCard({
   onBlocked,
 }: {
   displayName: string;
+  /**
+   * Given, the name renders as a text field. Omitted, it renders as a fixed heading exactly
+   * as before.
+   *
+   * Only the calendar deck passes it. A contacts name comes from the address book and is
+   * already right; a calendar name was parsed out of an event title and needs correcting —
+   * `Jaque 💜∞` is a real one. Making the field appear everywhere would change a contacts
+   * screen that is already device-verified, for no gain there.
+   */
+  onChangeName?: (next: string) => void;
   draft: PersonDraft;
   onChangeDraft: (next: PersonDraft) => void;
   onAction: (action: TriageAction) => void;
@@ -129,7 +140,18 @@ export function TriageCard({
   return (
     <GestureDetector gesture={pan}>
       <Animated.View style={[styles.card, { backgroundColor: theme.backgroundElement }, cardStyle]}>
-        <ThemedText type="subtitle">{displayName}</ThemedText>
+        {onChangeName ? (
+          <TextInput
+            value={displayName}
+            onChangeText={onChangeName}
+            placeholder="Name"
+            placeholderTextColor={theme.textSecondary}
+            accessibilityLabel="Name"
+            style={[styles.name, { color: theme.text, borderColor: theme.backgroundSelected }]}
+          />
+        ) : (
+          <ThemedText type="subtitle">{displayName}</ThemedText>
+        )}
 
         <ThemedText type="smallBold">Month</ThemedText>
         <View style={styles.grid}>
@@ -226,6 +248,15 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
+  name: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: Spacing.three,
+    alignSelf: 'stretch',
+    fontSize: 20,
+    fontWeight: '600',
+  },
   year: {
     minHeight: 44,
     borderWidth: 1,

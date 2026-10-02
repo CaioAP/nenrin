@@ -34,12 +34,82 @@ Rank every feature by **cost-per-birthday-acquired**. Build the funnel top-down:
 | # | Source | Cost | Stage |
 |---|---|---|---|
 | 1 | Contacts with a populated `birthday` field | free, one tap | v1 |
-| 2 | Device calendar events matching birthday patterns | free, one tap | v1 |
+| 2 | Device calendar events matching birthday patterns | free, one tap | v1 — **measured best source** |
 | 3 | Fast manual triage deck (swipe through contacts, day+month only) | ~2s each | v1 |
 | 4 | Ask-link — the contact fills it in themselves | ~0, needs server | **v2** |
 | 5 | Fully manual add | slow | v1 (escape hatch) |
 
 Facebook birthday export is dead (Graph API removed friend birthdays). Do not plan for it.
+
+### What the free sources actually yielded
+
+Constraint 5 said the contacts fill rate was a number to measure. Measured on one Android
+device, 2026-08-26 — and the calendar half took three attempts to measure honestly, which is
+the more useful half of this record:
+
+| Source | Read | Birthdays |
+|---|---|---|
+| Contacts | 433 contacts | **2** |
+| Device calendars | 89 events, one year forward | **~10** (12 matches incl. duplicates) |
+
+**Row 2 out-earns row 1 on this device by roughly five to one**, which is the reverse of the
+funnel's original ranking and the reverse of what the first two probe runs reported.
+
+#### Why the first two runs said zero
+
+`expo-calendar` hardcodes `CalendarContract.Instances.VISIBLE = 1` into its query on Android,
+in both its APIs, with no way to opt out. `VISIBLE` is a column on the *calendar*, not the
+event. A hidden calendar returns zero events — identical to a calendar that has none.
+
+Worse, `VISIBLE` is owned by whichever app manages calendars on the device. On this Samsung
+phone that is Samsung Calendar, **not** Google Calendar: the user's calendars read as ticked
+in Google Calendar while the provider had them hidden. Ticking them in Samsung Calendar made
+ten birthdays appear that had been there the whole time.
+
+Two lessons, both cheap to state and expensive to learn:
+
+- **Never read a zero from this module without printing `isVisible` beside it.** The probe
+  now leads with a count of hidden calendars for exactly this reason.
+- **A user can believe a calendar is enabled and have it be unreadable to this app.** That is
+  not a test-setup artefact — it is the normal state of a phone with two calendar apps
+  installed, and the import UI has to account for it rather than reporting "no birthdays
+  found".
+
+#### What a birthday event actually looks like
+
+```
+"Mãe's birthday" — caioap25@gmail.com
+  startDate=2027-01-25T00:00:00.000Z  allDay=true
+  recurrenceRule={"occurrence":null,"interval":null,"frequency":"yearly","endDate":null}
+  id="1636" instanceId=4839
+```
+
+Four consequences for the adapter:
+
+- **The name is inside the title, in the Google account's language.** `"Mãe's birthday"` is
+  English possessive on a Portuguese phone — the format follows the account, not the device
+  locale, so a parser keyed to `Intl` or to the device language is wrong.
+- **There is no birth year.** `startDate` is the occurrence Android expanded (2027), not the
+  original. `originalStartDate` is iOS-only. So every candidate from this source has
+  `birthday.year === null`, which the domain already handles everywhere.
+- **Duplicates are normal.** `"Pai's birthday"` appears twice under different ids, and
+  `"Jaque's birthday"` and `"Jaque 💜∞'s birthday"` are one person entered twice. De-duplication
+  by `externalId` will not catch these; they are distinct events.
+- **They live in the primary calendar**, not in a birthdays calendar. The Google Calendar app
+  groups them under a "Birthdays" heading in its own UI, which does not correspond to a
+  calendar in `CalendarContract` — matching on calendar identity would have found none of
+  them.
+
+#### What this does not say
+
+One device, one user. It does not establish that calendars beat contacts in general — it
+establishes that on a phone where the address book was never filled in, the birthdays were
+in Google Calendar instead, and that a plausible-looking zero was an artefact three times
+before it was a measurement.
+
+The earlier claim recorded here — that the birthday calendar is generated from Contacts and
+therefore cannot out-earn contacts import — is **withdrawn**. It is true of the Samsung
+`local.samsungbirthday` calendar, which is empty. It is not true of these events.
 
 ## v1 scope
 
@@ -169,6 +239,10 @@ impossible to bolt on later if v1 gets these wrong, and all three are nearly fre
    lands low, the triage deck (and later the ask-link) is the product, and import is just
    a seeding step.
 
+   **Measured, 2026-08-26, one Android device: 2 of 433 contacts.** Contacts import alone
+   does not carry the product, exactly as this constraint feared. The calendars did better —
+   about ten — which is why step 7 stays. See *What the free sources actually yielded* below.
+
 ## Implementation order
 
 1. `src/domain/` — partial dates, next-occurrence, rolling-window scheduling. Pure TS, TDD,
@@ -179,7 +253,8 @@ impossible to bolt on later if v1 gets these wrong, and all three are nearly fre
    300 people before touching a real device.
 5. Contacts source adapter — full grant path, then the limited-access path.
 6. The triage deck. Iterate on gesture speed; this is the screen worth polishing.
-7. Calendar import adapter.
+7. **Done.** Calendar import adapter. Measured as the highest-yield source on the test
+   device — see *What the free sources actually yielded*.
 8. Calendar export.
 9. Groups, message templates, settings.
 

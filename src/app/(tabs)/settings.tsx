@@ -80,7 +80,7 @@ export default function SettingsScreen() {
           title="Add people"
           hint="Bring in birthdays your phone already knows, and fill in the ones it does not."
         >
-          <ActionButton label="Import from contacts" onPress={() => router.push('/import')} />
+          <ActionButton label="Import birthdays" onPress={() => router.push('/import')} />
         </Section>
 
         <DebugTools />
