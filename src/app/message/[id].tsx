@@ -8,17 +8,12 @@ import { Chip } from '@/components/chip';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { usePerson } from '@/db/hooks';
+import { useGroups, usePerson } from '@/db/hooks';
 import { setTone } from '@/db/people';
 import { ageAtNextOccurrence } from '@/domain/birthday';
-import { DEFAULT_TONE, type MessageOption, messageOptions, type Tone } from '@/domain/message';
+import { groupsOf, resolveTone } from '@/domain/group';
+import { DEFAULT_TONE, type MessageOption, messageOptions, TONE_CHOICES } from '@/domain/message';
 import { useTheme } from '@/hooks/use-theme';
-
-const TONES: { value: Tone; label: string }[] = [
-  { value: 'family', label: 'Family' },
-  { value: 'close', label: 'Close' },
-  { value: 'colleague', label: 'Colleague' },
-];
 
 /**
  * Suggested messages for one person: pick one, edit it, copy or share it.
@@ -32,12 +27,21 @@ const TONES: { value: Tone; label: string }[] = [
 export default function MessageScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { person, loading, error } = usePerson(id);
+  const { groups, loading: groupsLoading } = useGroups();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const theme = useTheme();
 
-  const tone = person?.tone ?? DEFAULT_TONE;
+  // The person's own tone, else one their groups agree on, else the app's. Tapping a chip
+  // writes the person's own, which from then on outranks every group.
+  const tone =
+    (person &&
+      resolveTone(
+        person.tone,
+        groupsOf(person.id, groups).map((group) => group.tone),
+      )) ??
+    DEFAULT_TONE;
 
   // Switching tone throws away the current selection and any edits. Keeping them would mean
   // per-template edit memory or a confirm dialog, both of which cost more than a screen you
@@ -50,7 +54,9 @@ export default function MessageScreen() {
   }, [tone]);
 
   if (error) return <Centred title="Something went wrong" body={error.message} />;
-  if (loading) return null;
+  // Waits for the groups too, so a group's tone is what the screen opens on rather than
+  // something it switches to a frame later.
+  if (loading || groupsLoading) return null;
   if (!person) return <Centred title="Not here" body="This person has been removed." />;
 
   const options = messageOptions({
@@ -90,7 +96,7 @@ export default function MessageScreen() {
       <ThemedView style={styles.screen}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.tones}>
-            {TONES.map(({ value, label }) => (
+            {TONE_CHOICES.map(({ value, label }) => (
               <Chip
                 key={value}
                 label={label}

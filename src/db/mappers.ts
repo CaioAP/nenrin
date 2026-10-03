@@ -7,11 +7,12 @@
  */
 
 import { type LeapDayPolicy, makePartialDate } from '@/domain/birthday';
+import type { Group } from '@/domain/group';
 import type { ImportCandidate } from '@/domain/import';
-import type { Tone } from '@/domain/message';
+import { isTone, type Tone } from '@/domain/message';
 import type { Person } from '@/domain/person';
 import { type AppSettings, DEFAULT_SETTINGS } from '@/domain/settings';
-import type { NewPersonRow, PersonRow, SettingsRow } from './schema';
+import type { GroupRow, NewPersonRow, PersonRow, SettingsRow } from './schema';
 
 /** What a caller must supply to create a person. Ids and timestamps are the repository's job. */
 export type NewPerson = {
@@ -142,6 +143,42 @@ export function toPersonUpdate(patch: PersonPatch, at: Date): Partial<NewPersonR
   }
 
   return update;
+}
+
+/**
+ * Group row → domain, with its members attached.
+ *
+ * The tone is checked rather than trusted: it is a TEXT column, and a hand-edited database or
+ * a future sync could carry a word no template answers to. Unknown reads as "no opinion",
+ * which is what the group would have said had nobody set it.
+ */
+export function toGroup(row: GroupRow, memberIds: Iterable<string> = []): Group {
+  return {
+    id: row.id,
+    name: row.name,
+    leadDays: row.leadDays,
+    tone: isTone(row.tone) ? row.tone : null,
+    memberIds: new Set(memberIds),
+  };
+}
+
+/**
+ * Group rows and membership rows → groups, each carrying its members.
+ *
+ * Memberships pointing at a group not in `rows` are ignored, which is how a soft-deleted
+ * group's leftover memberships stay invisible without a second filter.
+ */
+export function toGroups(
+  rows: readonly GroupRow[],
+  memberships: readonly { personId: string; groupId: string }[],
+): Group[] {
+  const members = new Map<string, string[]>();
+  for (const { personId, groupId } of memberships) {
+    const list = members.get(groupId);
+    if (list) list.push(personId);
+    else members.set(groupId, [personId]);
+  }
+  return rows.map((row) => toGroup(row, members.get(row.id)));
 }
 
 /**

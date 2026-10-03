@@ -21,12 +21,18 @@ export function PersonForm({
   onSubmit,
   submitLabel,
   autoFocusName = false,
+  groups,
   footer,
 }: {
   draft: PersonDraft;
   onChange: (next: PersonDraft) => void;
   onSubmit: () => Promise<DraftErrors | null>;
   submitLabel: string;
+  /**
+   * The group picker, passed in rather than built here so this form stays free of the
+   * database: the screens own where the groups come from and when membership is written.
+   */
+  groups?: ReactNode;
   /** Secondary actions, rendered tight under the submit button so they read as a group. */
   footer?: ReactNode;
   /**
@@ -89,6 +95,8 @@ export function PersonForm({
             ]}
           />
         </View>
+
+        {groups}
 
         {/* Grouped, because `content` spaces its children 24pt apart — enough that a footer
             button would read as an unrelated section rather than an alternative to Save. */}

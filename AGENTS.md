@@ -76,6 +76,13 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   schedule changed *after* the moment passed. Without the guard, a one-week lead time sends
   eight notifications instead of one. Accepted gap: granting notification permission long
   after adding people catches up nobody, since their `updatedAt` predates the missed slots.
+- **A group write stamps a person's `updatedAt` only when it moves their lead time.**
+  Groups feed `resolveLeadDays`, so a group edit can change when a member is reminded, and the
+  scheduler only learns that through `knownSince`. Every write in `src/db/groups.ts` therefore
+  resolves each affected member's lead before and after, in one transaction, and stamps only
+  the ones whose answer changed (`leadChanges` in `src/domain/group.ts`). Stamping every
+  member on every edit would re-send already-fired reminders daily until the birthday — the
+  `setTone` trap again. A group's own `updatedAt` is free to move: nothing schedules off it.
 - **Contacts access can be partial.** iOS 18 limited access means the user picks individual
   contacts, so import can never promise "one tap, all your contacts". The app must also be
   fully usable with contacts permission *denied*.

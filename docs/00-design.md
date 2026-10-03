@@ -259,7 +259,9 @@ impossible to bolt on later if v1 gets these wrong, and all three are nearly fre
    person, kept in sync on every write and foreground; 29 February birthdays export as
    one-shot events under the leap-day policy rather than a yearly rule the platform would
    have to interpret.
-9. Groups, message templates, settings.
+9. Groups, message templates, settings. **Groups done**: a group carries a default lead time
+   and a default message tone, each overridden by the person's own; membership is picked on
+   the person's screen or in bulk on the group's. Message templates shipped earlier.
 
 Ship after 9. Do not start v2 before v1 is on a device and used for a real month.
 

@@ -20,13 +20,6 @@ Low impact today: nothing writes `tone` except `setTone`, which is typed. It bec
 when v2 sync lands and rows arrive from elsewhere. The fix is an `isTone()` guard next to
 the `makePartialDate` call.
 
-### `TONES` lives in a screen, not the domain
-
-`src/app/message/[id].tsx:17` holds the tone list and its display labels, while the `Tone`
-type itself is `src/domain/message.ts:12`. Adding a fourth tone means editing a route file
-and hoping nothing else enumerates them. Only one screen renders tones today, so the
-duplication has no second copy to drift from — that is the whole reason it was left.
-
 ### The "Copied" status is not cleared when the tone changes
 
 `src/app/message/[id].tsx:37` sets a status line after a copy or share. Switching tone

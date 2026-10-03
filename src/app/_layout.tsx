@@ -77,6 +77,8 @@ function AppStack() {
       <Stack.Screen name="import" />
       <Stack.Screen name="triage/index" />
       <Stack.Screen name="message/[id]" />
+      <Stack.Screen name="groups/index" />
+      <Stack.Screen name="groups/[id]" />
     </Stack>
   );
 }

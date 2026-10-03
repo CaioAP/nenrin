@@ -3,11 +3,13 @@ import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet } from 'react-native';
 
+import { GroupPicker } from '@/components/group-picker';
 import { PersonForm } from '@/components/person-form';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { usePerson } from '@/db/hooks';
+import { setPersonGroups } from '@/db/groups';
+import { useGroups, usePerson } from '@/db/hooks';
 import { deletePerson, updatePerson } from '@/db/people';
 import {
   draftFromPerson,
@@ -15,23 +17,28 @@ import {
   type PersonDraft,
   parsePersonDraft,
 } from '@/domain/draft';
+import { groupsOf } from '@/domain/group';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function PersonScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
   const { person, loading, error } = usePerson(id);
+  const { groups, loading: groupsLoading } = useGroups();
   const [draft, setDraft] = useState<PersonDraft>(EMPTY_PERSON_DRAFT);
+  const [groupIds, setGroupIds] = useState<ReadonlySet<string>>(new Set());
   const [ready, setReady] = useState(false);
 
   // Seeded once. Re-seeding on every change to `person` would fight the user's typing, since
-  // the live query re-fires the moment they save.
+  // the live query re-fires the moment they save. Waits for the groups too, or the picker
+  // would seed empty and saving would quietly take the person out of every group.
   useEffect(() => {
-    if (person && !ready) {
+    if (person && !groupsLoading && !ready) {
       setDraft(draftFromPerson(person));
+      setGroupIds(new Set(groupsOf(person.id, groups).map((group) => group.id)));
       setReady(true);
     }
-  }, [person, ready]);
+  }, [person, groups, groupsLoading, ready]);
 
   const save = async () => {
     const parsed = parsePersonDraft(draft, new Date().getFullYear());
@@ -42,6 +49,13 @@ export default function PersonScreen() {
       birthday: parsed.value.birthday,
       notes: parsed.value.notes,
     });
+    // Filtered to groups that still exist: one deleted from another screen while this form
+    // was open would otherwise be written back as a membership of a removed group.
+    const live = new Set(groups.map((group) => group.id));
+    await setPersonGroups(
+      id,
+      [...groupIds].filter((groupId) => live.has(groupId)),
+    );
     router.back();
     return null;
   };
@@ -97,6 +111,7 @@ export default function PersonScreen() {
         onChange={setDraft}
         onSubmit={save}
         submitLabel="Save changes"
+        groups={<GroupPicker groups={groups} selected={groupIds} onChange={setGroupIds} />}
         footer={
           <Link href={`/message/${id}`} asChild>
             {/* Flattened, not an array: `asChild` clones this into expo-router's <Slot>,

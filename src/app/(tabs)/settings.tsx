@@ -45,7 +45,7 @@ export default function SettingsScreen() {
 
         <Section
           title="Remind me"
-          hint="How far ahead of a birthday to be told, unless a person overrides it."
+          hint="How far ahead of a birthday to be told, unless one of their groups says otherwise."
         >
           {LEAD_DAY_CHOICES.map((days) => (
             <Chip
@@ -58,6 +58,13 @@ export default function SettingsScreen() {
         </Section>
 
         <NotifyTime settings={settings} />
+
+        <Section
+          title="Groups"
+          hint="Family, Work, School: set how early to be reminded for everyone in a group at once."
+        >
+          <ActionButton label="Manage groups" onPress={() => router.push('/groups')} />
+        </Section>
 
         <Section
           title="29 February birthdays"

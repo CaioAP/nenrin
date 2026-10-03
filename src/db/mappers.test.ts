@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  toGroup,
+  toGroups,
   toNewPersonFromCandidate,
   toNewPersonRow,
   toPeople,
@@ -8,7 +10,7 @@ import {
   toPersonSafe,
   toPersonUpdate,
 } from './mappers';
-import type { PersonRow } from './schema';
+import type { GroupRow, PersonRow } from './schema';
 
 const at = new Date(2026, 7, 9, 12, 0);
 
@@ -245,5 +247,39 @@ describe('toNewPersonFromCandidate', () => {
         source: 'contacts',
       }),
     ).toThrow();
+  });
+});
+
+describe('toGroup / toGroups', () => {
+  const groupRow = (overrides: Partial<GroupRow> = {}): GroupRow => ({
+    id: 'g1',
+    name: 'Family',
+    leadDays: 7,
+    tone: 'family',
+    createdAt: at,
+    updatedAt: at,
+    deletedAt: null,
+    ...overrides,
+  });
+
+  it('keeps an explicit zero lead time rather than reading it as unset', () => {
+    expect(toGroup(groupRow({ leadDays: 0 })).leadDays).toBe(0);
+  });
+
+  it('reads an unknown tone as no opinion instead of trusting the column', () => {
+    // A TEXT column: a hand-edited database or a future sync could hold anything.
+    expect(toGroup(groupRow({ tone: 'formal' as GroupRow['tone'] })).tone).toBeNull();
+  });
+
+  it('attaches each group’s members and ignores memberships of groups not given', () => {
+    const groups = toGroups(
+      [groupRow(), groupRow({ id: 'g2', name: 'Work' })],
+      [
+        { personId: 'p1', groupId: 'g1' },
+        { personId: 'p2', groupId: 'g1' },
+        { personId: 'p1', groupId: 'gone' },
+      ],
+    );
+    expect(groups.map((group) => [...group.memberIds])).toEqual([['p1', 'p2'], []]);
   });
 });
