@@ -115,6 +115,9 @@ function PersonRow({ person }: { person: Person }) {
         <ThemedText type="default">{person.displayName}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           {formatBirthday(person.birthday)}
+          {/* Said here and on Upcoming, because a muted person looks exactly like one whose
+              reminder is coming — the list is the only place the difference can be noticed. */}
+          {person.muted ? ' · No reminders' : ''}
         </ThemedText>
       </Pressable>
     </Link>

@@ -189,7 +189,8 @@ interface BirthdaySource {
 - `person` — id, display_name, birth_day, birth_month, **birth_year nullable**,
   source, external_id, notes, created_at, updated_at, deleted_at.
 - `group` / `person_group` — many-to-many.
-- `settings` — lead times, quiet hours, notification time-of-day.
+- `settings` — default lead time, notification time-of-day, leap-day policy. (Quiet hours
+  were planned and dropped — see step 9.)
 - `skipped` — external ids the user chose "don't ask again" for, so triage never
   re-shows them on a later import.
 
@@ -259,9 +260,14 @@ impossible to bolt on later if v1 gets these wrong, and all three are nearly fre
    person, kept in sync on every write and foreground; 29 February birthdays export as
    one-shot events under the leap-day policy rather than a yearly rule the platform would
    have to interpret.
-9. Groups, message templates, settings. **Groups done**: a group carries a default lead time
+9. **Done.** Groups, message templates, settings. A group carries a default lead time
    and a default message tone, each overridden by the person's own; membership is picked on
    the person's screen or in bulk on the group's. Message templates shipped earlier.
+   Settings holds the app-wide lead time, time of day, leap-day policy and calendar export;
+   each person's screen holds their own lead time and an Off choice that mutes them, with
+   "Default" labelled by what it currently resolves to and which group decides it. Quiet
+   hours were dropped: every reminder fires at the one chosen time of day, so there is no
+   window for them to protect.
 
 Ship after 9. Do not start v2 before v1 is on a device and used for a real month.
 

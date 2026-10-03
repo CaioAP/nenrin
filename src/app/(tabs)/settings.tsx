@@ -45,7 +45,7 @@ export default function SettingsScreen() {
 
         <Section
           title="Remind me"
-          hint="How far ahead of a birthday to be told, unless one of their groups says otherwise."
+          hint="How far ahead of a birthday to be told, unless a person or one of their groups says otherwise."
         >
           {LEAD_DAY_CHOICES.map((days) => (
             <Chip

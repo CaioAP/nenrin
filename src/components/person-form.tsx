@@ -22,6 +22,7 @@ export function PersonForm({
   submitLabel,
   autoFocusName = false,
   groups,
+  reminder,
   footer,
 }: {
   draft: PersonDraft;
@@ -33,6 +34,11 @@ export function PersonForm({
    * database: the screens own where the groups come from and when membership is written.
    */
   groups?: ReactNode;
+  /**
+   * The reminder picker, a slot for the same reason as `groups`. Rendered after them, since
+   * what "Default" means depends on which groups are ticked.
+   */
+  reminder?: ReactNode;
   /** Secondary actions, rendered tight under the submit button so they read as a group. */
   footer?: ReactNode;
   /**
@@ -97,6 +103,8 @@ export function PersonForm({
         </View>
 
         {groups}
+
+        {reminder}
 
         {/* Grouped, because `content` spaces its children 24pt apart — enough that a footer
             button would read as an unrelated section rather than an alternative to Save. */}

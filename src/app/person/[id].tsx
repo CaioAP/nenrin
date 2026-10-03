@@ -1,15 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet } from 'react-native';
 
 import { GroupPicker } from '@/components/group-picker';
 import { PersonForm } from '@/components/person-form';
+import { type ReminderChoice, ReminderPicker } from '@/components/reminder-picker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { setPersonGroups } from '@/db/groups';
-import { useGroups, usePerson } from '@/db/hooks';
+import { useGroups, usePerson, useSettings } from '@/db/hooks';
 import { deletePerson, updatePerson } from '@/db/people';
 import {
   draftFromPerson,
@@ -18,6 +19,7 @@ import {
   parsePersonDraft,
 } from '@/domain/draft';
 import { groupsOf } from '@/domain/group';
+import { inheritedLead } from '@/domain/person';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function PersonScreen() {
@@ -27,7 +29,19 @@ export default function PersonScreen() {
   const { groups, loading: groupsLoading } = useGroups();
   const [draft, setDraft] = useState<PersonDraft>(EMPTY_PERSON_DRAFT);
   const [groupIds, setGroupIds] = useState<ReadonlySet<string>>(new Set());
+  const [reminder, setReminder] = useState<ReminderChoice>({ leadDays: null, muted: false });
   const [ready, setReady] = useState(false);
+  const { settings } = useSettings();
+  // From the ticked groups, not the saved ones, so "Default" answers for the form as it
+  // stands: tick Family and the default moves to Family's lead before anything is saved.
+  const inherited = useMemo(
+    () =>
+      inheritedLead(
+        groups.filter((group) => groupIds.has(group.id)),
+        settings.defaultLeadDays,
+      ),
+    [groups, groupIds, settings.defaultLeadDays],
+  );
 
   // Seeded once. Re-seeding on every change to `person` would fight the user's typing, since
   // the live query re-fires the moment they save. Waits for the groups too, or the picker
@@ -36,6 +50,7 @@ export default function PersonScreen() {
     if (person && !groupsLoading && !ready) {
       setDraft(draftFromPerson(person));
       setGroupIds(new Set(groupsOf(person.id, groups).map((group) => group.id)));
+      setReminder({ leadDays: person.leadDays, muted: person.muted });
       setReady(true);
     }
   }, [person, groups, groupsLoading, ready]);
@@ -48,6 +63,8 @@ export default function PersonScreen() {
       displayName: parsed.value.displayName,
       birthday: parsed.value.birthday,
       notes: parsed.value.notes,
+      leadDays: reminder.leadDays,
+      muted: reminder.muted,
     });
     // Filtered to groups that still exist: one deleted from another screen while this form
     // was open would otherwise be written back as a membership of a removed group.
@@ -112,6 +129,7 @@ export default function PersonScreen() {
         onSubmit={save}
         submitLabel="Save changes"
         groups={<GroupPicker groups={groups} selected={groupIds} onChange={setGroupIds} />}
+        reminder={<ReminderPicker value={reminder} inherited={inherited} onChange={setReminder} />}
         footer={
           <Link href={`/message/${id}`} asChild>
             {/* Flattened, not an array: `asChild` clones this into expo-router's <Slot>,
