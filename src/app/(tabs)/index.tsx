@@ -63,6 +63,7 @@ function UpcomingRow({ entry }: { entry: UpcomingEntry }) {
           <ThemedText type="small" themeColor="textSecondary">
             {formatOccursOn(entry.occursOn)}
             {age ? ` · ${age}` : ''}
+            {entry.person.muted ? ' · No reminders' : ''}
           </ThemedText>
         </View>
         <ThemedText type="smallBold" themeColor={entry.daysAway === 0 ? 'text' : 'textSecondary'}>

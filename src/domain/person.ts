@@ -52,3 +52,36 @@ export function resolveLeadDays(
 
   return defaultLeadDays;
 }
+
+/** Where a person's reminder comes from when they have no override of their own. */
+export type InheritedLead = {
+  days: number;
+  /** The group that decides it, or null when the app default does. */
+  fromGroup: string | null;
+};
+
+/**
+ * What `resolveLeadDays` would answer with no personal override, and who decided it.
+ *
+ * The person screen offers "Default" as one of the lead-time choices, and a bare "Default"
+ * would hide the one thing worth knowing before picking it: what it currently means. Ties go
+ * to the first group given, so the named group is stable for a stable list.
+ */
+export function inheritedLead(
+  groups: readonly { name: string; leadDays: number | null }[],
+  defaultLeadDays: number,
+): InheritedLead {
+  let winner: { name: string; leadDays: number } | null = null;
+  for (const { name, leadDays } of groups) {
+    if (leadDays !== null && (winner === null || leadDays > winner.leadDays)) {
+      winner = { name, leadDays };
+    }
+  }
+
+  const days = resolveLeadDays(
+    null,
+    groups.map((group) => group.leadDays),
+    defaultLeadDays,
+  );
+  return { days, fromGroup: winner?.name ?? null };
+}

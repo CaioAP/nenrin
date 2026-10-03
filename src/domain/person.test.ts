@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveLeadDays } from './person';
+import { inheritedLead, resolveLeadDays } from './person';
 
 describe('resolveLeadDays', () => {
   it('falls back to the app default when nothing overrides it', () => {
@@ -36,5 +36,61 @@ describe('resolveLeadDays', () => {
 
   it('respects a group that explicitly says "on the day"', () => {
     expect(resolveLeadDays(null, [0], 7)).toBe(0);
+  });
+});
+
+describe('inheritedLead', () => {
+  it('names the app default when no group has an opinion', () => {
+    expect(inheritedLead([{ name: 'Work', leadDays: null }], 3)).toEqual({
+      days: 3,
+      fromGroup: null,
+    });
+  });
+
+  it('names the group with the longest lead', () => {
+    expect(
+      inheritedLead(
+        [
+          { name: 'Work', leadDays: 0 },
+          { name: 'Family', leadDays: 7 },
+        ],
+        3,
+      ),
+    ).toEqual({ days: 7, fromGroup: 'Family' });
+  });
+
+  it('keeps the first group on a tie', () => {
+    expect(
+      inheritedLead(
+        [
+          { name: 'Family', leadDays: 1 },
+          { name: 'School', leadDays: 1 },
+        ],
+        0,
+      ).fromGroup,
+    ).toBe('Family');
+  });
+
+  it('lets a group decide even when it asks for the same day', () => {
+    // A group set to "on the day" is a choice, not an absence of one.
+    expect(inheritedLead([{ name: 'Work', leadDays: 0 }], 7)).toEqual({
+      days: 0,
+      fromGroup: 'Work',
+    });
+  });
+
+  it('agrees with resolveLeadDays', () => {
+    const groups = [
+      { name: 'A', leadDays: null },
+      { name: 'B', leadDays: 3 },
+      { name: 'C', leadDays: 1 },
+    ];
+    expect(inheritedLead(groups, 0).days).toBe(
+      resolveLeadDays(
+        null,
+        groups.map((group) => group.leadDays),
+        0,
+      ),
+    );
   });
 });
