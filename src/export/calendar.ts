@@ -39,8 +39,11 @@ const EXPORT_CALENDAR_COLOR = '#244f7c';
  * Which midnight an all-day event starts at here. See `AllDayEncoding` for why they differ.
  *
  * Decided at the adapter boundary, as `src/domain/` must not know which platform it runs on.
+ * Exported because the importer in `src/sources/calendar.ts` decodes with the same value —
+ * one platform fork, read and written from one place.
  */
-const encoding: AllDayEncoding = Platform.OS === 'android' ? 'utc-midnight' : 'local-midnight';
+export const allDayEncoding: AllDayEncoding =
+  Platform.OS === 'android' ? 'utc-midnight' : 'local-midnight';
 
 /**
  * Whether a calendar is the one this module created, so the importer can skip it.
@@ -133,7 +136,7 @@ export async function createExportEvent(calendarId: string, event: ExportEvent):
   const calendar = await findCalendar(calendarId);
   if (!calendar) throw new Error('Nenrin’s calendar is gone.');
 
-  const { start, end } = allDayRange(event.day, encoding);
+  const { start, end } = allDayRange(event.day, allDayEncoding);
   const created = await calendar.createEvent({
     title: event.title,
     notes: event.notes,

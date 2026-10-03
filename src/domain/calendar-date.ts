@@ -1,51 +1,55 @@
 /**
  * An all-day event's start → the calendar day it means.
  *
- * Pure. **This is the one place in the codebase where UTC is correct**, and it is worth
- * being precise about why, because AGENTS.md says the opposite everywhere else.
+ * Pure. An all-day event does not begin at a moment, it occupies a date — but `expo-calendar`
+ * hands its start over as an absolute instant, so the date has been *encoded* as one. This
+ * undoes the encoding and hands back three integers. Nothing downstream of here touches a
+ * time zone: `PartialDate` has none, the birthday renders as the same day everywhere, and the
+ * reminder fires on the user's own local morning. This is not arithmetic.
  *
- * Android stores all-day events as UTC midnight: a birthday on 25 January arrives as
- * `2027-01-25T00:00:00.000Z`. That is a *wire format for a calendar day*, not an instant —
- * the event does not begin at a moment, it occupies a date. Reading it back with local
- * getters in São Paulo (UTC−3) yields 24 January, and every date in the app is then off by
- * one for every user west of Greenwich, permanently and silently.
+ * The encoding differs by platform, which is why `encoding` is an argument rather than a
+ * fact this file knows. It is chosen from `Platform.OS` in `src/sources/calendar.ts`, the same
+ * way `src/export/calendar.ts` chooses it for `allDayRange`:
  *
- * So this decodes with UTC getters and hands back three integers. Nothing downstream of here
- * touches UTC: `PartialDate` has no timezone, the birthday renders as the same day
- * everywhere, and the reminder fires on the user's own local morning. This is not
- * arithmetic — it is undoing an encoding.
+ * - `'utc-midnight'` — Android. All-day events are stored as UTC midnight: a birthday on
+ *   25 January arrives as `2027-01-25T00:00:00.000Z`. **This is the one place in the codebase
+ *   where UTC getters are correct**, despite AGENTS.md saying the opposite everywhere else.
+ *   Local getters in São Paulo (UTC−3) would read 24 January — every date off by one for
+ *   every user west of Greenwich, permanently and silently.
+ * - `'local-midnight'` — iOS. `expo-calendar` serializes `EKEvent.startDate` through a
+ *   formatter pinned to UTC (`ios/Conversions/Conversions.swift`), but EventKit begins an
+ *   all-day event at *local* midnight. In UTC+9 a 25 January birthday arrives as
+ *   `2027-01-24T15:00:00.000Z`; UTC getters read the 24th. Local getters undo it. The mirror
+ *   image of the Android bug: it breaks *east* of Greenwich, so São Paulo cannot see it.
+ *   **Unverified on a device** — there is no iOS build yet, only the Swift source.
  *
- * `TZ=Europe/London` cannot check this file. London is UTC+0 in January, so local and UTC
- * agree; in July it is UTC+1, and UTC midnight reads as 01:00 on the *same* day. Both
- * directions are blind. Hence `npm run test:tz`.
- *
- * All of the above is Android's encoding, not a platform-neutral fact. On iOS,
- * `expo-calendar` pins its date serializer to UTC and renders `EKEvent.startDate`, an
- * absolute instant — but EventKit begins an all-day event at *local* midnight, not UTC
- * midnight. Decoding that instant with UTC getters is therefore wrong on iOS for every
- * positive UTC offset — east of Greenwich, the mirror image of the Android bug above, which
- * breaks west of Greenwich instead. (A negative offset, São Paulo's UTC−3 included, happens
- * to decode correctly on iOS; UTC+9 does not.) This function does not yet branch on platform —
- * see the `expo-calendar` entry in AGENTS.md's Non-obvious constraints for the mechanism, the
- * two Swift files that prove it, and why the fix belongs at the `src/sources/` adapter
- * boundary rather than here.
+ * Neither test zone sees everything. `TZ=Europe/London` is UTC+0 in January, where the two
+ * getters agree; in July it is UTC+1, which catches the iOS bug but not the Android one.
+ * `TZ=America/Sao_Paulo` (UTC−3) catches the Android bug and is blind to the iOS one. The
+ * tests are written so each encoding is exercised in a zone that can fail it.
  */
 
 import { makePartialDate, type PartialDate } from './birthday';
 
 /** Null when the input is unparseable. */
-export function partialDateFromAllDayStart(startDate: string | Date): PartialDate | null {
+export function partialDateFromAllDayStart(
+  startDate: string | Date,
+  encoding: AllDayEncoding,
+): PartialDate | null {
   const instant = typeof startDate === 'string' ? new Date(startDate) : startDate;
   if (Number.isNaN(instant.getTime())) return null;
 
-  // No try/catch around `makePartialDate`. `getUTCMonth() + 1` is always 1–12 and
-  // `getUTCDate()` is always a day that month really has, so the throw is unreachable —
-  // a catch here would be dead code pretending to handle something.
+  // No try/catch around `makePartialDate`. Either pair of getters returns a month 1–12 and a
+  // day that month really has, so the throw is unreachable — a catch here would be dead code
+  // pretending to handle something.
   //
   // The year is always null, and not because it is unknown: `startDate` is the occurrence
   // Android expanded (2027), never the original. `originalStartDate` would carry the real
   // one and is iOS-only. Passing 2027 through would store a person born next year.
-  return makePartialDate(instant.getUTCMonth() + 1, instant.getUTCDate(), null);
+  if (encoding === 'utc-midnight') {
+    return makePartialDate(instant.getUTCMonth() + 1, instant.getUTCDate(), null);
+  }
+  return makePartialDate(instant.getMonth() + 1, instant.getDate(), null);
 }
 
 /**
@@ -62,9 +66,10 @@ export type CalendarDay = { year: number; month: number; day: number };
  * - `'local-midnight'` — iOS. EventKit begins an all-day event at local midnight and reads
  *   the day back in the device's own zone.
  *
- * The same fork `partialDateFromAllDayStart` documents for reading, met from the writing side.
- * The domain cannot know which platform it is on, so the adapter passes this in — chosen from
- * `Platform.OS` in `src/export/calendar.ts`, never inside this file.
+ * The same value is the argument to both directions: `partialDateFromAllDayStart` reads with
+ * it, `allDayRange` writes with it. The domain cannot know which platform it is on, so the
+ * adapters pass it in — chosen from `Platform.OS` in `src/sources/calendar.ts` and
+ * `src/export/calendar.ts`, never inside this file.
  */
 export type AllDayEncoding = 'utc-midnight' | 'local-midnight';
 

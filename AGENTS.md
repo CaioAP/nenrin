@@ -175,27 +175,25 @@ ask-link. Anything that does not reduce entry cost is a side feature.
   phone). See *What the free sources actually yielded* in `docs/00-design.md`.
 
 - **All-day events are encoded in UTC on both platforms, but only one of them starts at UTC
-  midnight.** `partialDateFromAllDayStart` (`src/domain/calendar-date.ts`) decodes with UTC
-  getters, which is correct for Android — its all-day events genuinely are stored as UTC
-  midnight. iOS is the opposite: `expo-calendar`'s `ios/Conversions/Conversions.swift`
-  defines a module-wide `dateFormatter` pinned to `TimeZone(identifier: "UTC")`, and
+  midnight.** Android's all-day events genuinely are stored as UTC midnight. iOS is the
+  opposite: `expo-calendar`'s `ios/Conversions/Conversions.swift` defines a module-wide
+  `dateFormatter` pinned to `TimeZone(identifier: "UTC")`, and
   `ios/Next/CalendarNextModule.swift`'s `Property("startDate")` renders `EKEvent.startDate`
   through that formatter — but `EKEvent.startDate` is an absolute instant, and EventKit
   begins an all-day event at *local* midnight, not UTC midnight. So on a device in UTC+9, a
   25 January birthday's local midnight is `2027-01-24T15:00:00Z`, and formatting that instant
   in UTC yields the 24th, not the 25th. The two bugs are mirror images: Android's UTC-midnight
-  encoding breaks under local getters for every user *west* of Greenwich (a negative offset
-  reads back a day early — the São Paulo case this file's doc comment already walks through),
-  while iOS's local-midnight-in-UTC encoding breaks under UTC getters for every user *east*
-  of Greenwich (any positive offset subtracts hours from local midnight and rolls back a
-  calendar day in UTC). A negative offset — São Paulo's UTC−3 among them — happens to decode
-  correctly on iOS today; a positive one, UTC+9 above, does not.
-  `partialDateFromAllDayStart` is Android-correct and iOS-wrong today. There is no iOS build
-  yet to confirm this against a device, only against the two Swift files above. Fixing it is
-  not a matter of swapping UTC getters for local ones — `src/domain/` must stay platform-free,
-  so the domain function needs an explicit "which midnight" argument, decided by
-  `Platform.OS` at the adapter boundary in `src/sources/calendar.ts`, not inside the domain
-  function itself.
+  encoding breaks under local getters for every user *west* of Greenwich, while iOS's
+  local-midnight-in-UTC encoding breaks under UTC getters for every user *east* of it.
+  `partialDateFromAllDayStart` (`src/domain/calendar-date.ts`) therefore takes the same
+  `AllDayEncoding` that `allDayRange` writes with, and `src/export/calendar.ts` exports the
+  one `allDayEncoding` chosen from `Platform.OS` that both the importer and the exporter use.
+  Do not give the argument a default: a caller that forgets it silently reintroduces one of
+  the two bugs. The iOS half is derived from the Swift source and the tests, not from a
+  device — there is no iOS build yet. **Neither pinned test zone sees both halves**: São Paulo
+  catches the Android bug and is blind to the iOS one, London catches the iOS one only in
+  summer (UTC+1), which is why the iOS tests use July dates. `TZ=Asia/Tokyo npx vitest run`
+  is a useful extra check when touching this file.
 
 - **Calendar export writes into a calendar Nenrin creates, and never asks the calendar what it
   holds.** Every event query on Android carries the `VISIBLE = 1` clause above, so a user who

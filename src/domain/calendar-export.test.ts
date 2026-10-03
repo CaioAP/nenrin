@@ -212,6 +212,22 @@ describe('allDayRange', () => {
   it('round-trips through the import decoder on the Android encoding', () => {
     const { start } = allDayRange({ year: 2028, month: 2, day: 29 }, 'utc-midnight');
 
-    expect(partialDateFromAllDayStart(start)).toEqual({ month: 2, day: 29, year: null });
+    expect(partialDateFromAllDayStart(start, 'utc-midnight')).toEqual({
+      month: 2,
+      day: 29,
+      year: null,
+    });
+  });
+
+  it('round-trips through the import decoder on the iOS encoding', () => {
+    // 15 July, so London's UTC+1 puts the start on the 14th in UTC and a decoder that
+    // reached for UTC getters would fail here.
+    const { start } = allDayRange({ year: 2027, month: 7, day: 15 }, 'local-midnight');
+
+    expect(partialDateFromAllDayStart(start.toISOString(), 'local-midnight')).toEqual({
+      month: 7,
+      day: 15,
+      year: null,
+    });
   });
 });
