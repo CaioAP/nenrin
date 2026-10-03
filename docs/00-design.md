@@ -255,7 +255,10 @@ impossible to bolt on later if v1 gets these wrong, and all three are nearly fre
 6. The triage deck. Iterate on gesture speed; this is the screen worth polishing.
 7. **Done.** Calendar import adapter. Measured as the highest-yield source on the test
    device — see *What the free sources actually yielded*.
-8. Calendar export.
+8. **Done.** Calendar export. A calendar of Nenrin's own, one yearly all-day event per
+   person, kept in sync on every write and foreground; 29 February birthdays export as
+   one-shot events under the leap-day policy rather than a yearly rule the platform would
+   have to interpret.
 9. Groups, message templates, settings.
 
 Ship after 9. Do not start v2 before v1 is on a device and used for a real month.

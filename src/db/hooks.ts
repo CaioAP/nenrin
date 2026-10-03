@@ -10,15 +10,16 @@
  * access, not thirty.
  */
 
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, count, eq, isNull } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useMemo } from 'react';
 
 import type { Person } from '@/domain/person';
 import type { AppSettings } from '@/domain/settings';
+import { type ExportState, toExportState } from './calendar-export';
 import { db } from './client';
 import { toPeople, toSettings } from './mappers';
-import { person, settings } from './schema';
+import { calendarExport, exportedEvent, person, settings } from './schema';
 
 /** Everyone, alphabetically, kept live. */
 export function usePeople(): { people: Person[]; error: Error | undefined; loading: boolean } {
@@ -64,4 +65,19 @@ export function useSettings(): { settings: AppSettings; error: Error | undefined
   const { data, error } = useLiveQuery(db.select().from(settings).limit(1));
 
   return { settings: useMemo(() => toSettings(data?.[0]), [data]), error };
+}
+
+/**
+ * Calendar export's state and how many events it has written, kept live.
+ *
+ * Like `useSettings`, no loading flag: an unwritten row *is* "off", so the first render
+ * already has a usable answer.
+ */
+export function useCalendarExport(): { state: ExportState; exportedCount: number } {
+  const { data: stateRows } = useLiveQuery(db.select().from(calendarExport).limit(1));
+  const { data: countRows } = useLiveQuery(db.select({ total: count() }).from(exportedEvent));
+
+  const state = useMemo(() => toExportState(stateRows?.[0]), [stateRows]);
+
+  return { state, exportedCount: countRows?.[0]?.total ?? 0 };
 }
