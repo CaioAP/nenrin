@@ -2,7 +2,7 @@
  * The device's calendars as a birthday source.
  *
  * Thin, in the shape `contacts.ts` established: everything that can be wrong — the name
- * inside a title, the UTC-midnight wire format — lives in `src/domain/calendar-title.ts` and
+ * inside a title, the all-day midnight wire format — lives in `src/domain/calendar-title.ts` and
  * `src/domain/calendar-date.ts`, which are pure and tested. What is left here is a sequence
  * of SDK calls with no branching of its own, which is why there is no test file.
  *
@@ -17,7 +17,7 @@ import { Platform } from 'react-native';
 import { partialDateFromAllDayStart } from '@/domain/calendar-date';
 import { parseBirthdayTitle } from '@/domain/calendar-title';
 import type { ImportCandidate } from '@/domain/import';
-import { isExportCalendar } from '@/export/calendar';
+import { allDayEncoding, isExportCalendar } from '@/export/calendar';
 import type { AccessLevel, BirthdaySource } from './types';
 
 /**
@@ -100,8 +100,8 @@ export const calendarSource: BirthdaySource = {
  * successful one are one expression each and nothing needs a non-null assertion after.
  */
 function toCandidate(event: Calendar.ExpoCalendarEvent): ImportCandidate[] {
-  // All-day only. `partialDateFromAllDayStart` is named for its precondition: UTC getters
-  // are correct *because* the platform encodes an all-day date as UTC midnight. A timed
+  // All-day only. `partialDateFromAllDayStart` is named for its precondition: its getters
+  // are correct *because* the platform encodes an all-day date as a midnight. A timed
   // 21:00 event in São Paulo is 00:00 UTC the following day, so decoding one that way
   // would land the birthday on the wrong date — and a titled "Ana's birthday" dinner
   // booking is exactly the kind of event a user really has.
@@ -110,7 +110,7 @@ function toCandidate(event: Calendar.ExpoCalendarEvent): ImportCandidate[] {
   const parsed = parseBirthdayTitle(event.title);
   if (!parsed) return [];
 
-  const birthday = partialDateFromAllDayStart(event.startDate);
+  const birthday = partialDateFromAllDayStart(event.startDate, allDayEncoding);
   if (!birthday) return [];
 
   return [
