@@ -74,11 +74,22 @@ export const group = sqliteTable('group', {
   name: text('name').notNull(),
   /** Default lead time for members who have no override of their own. */
   leadDays: integer('lead_days'),
+  /** Default message tone for members who never chose one. Null means no opinion. */
+  tone: text('tone').$type<Tone>(),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(now),
   deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
 });
 
+/**
+ * Group membership.
+ *
+ * The one table without `updatedAt`/`deletedAt`: leaving a group deletes the row. A
+ * membership has no state beyond existing, so the v2 backup can treat a person's groups as a
+ * set it replaces whole — the person's own `updatedAt` moves when their schedule does, and
+ * the group's on every edit to it. Adding the columns later would need a table
+ * rebuild, since SQLite cannot `ADD COLUMN` with the expression default the other tables use.
+ */
 export const personGroup = sqliteTable(
   'person_group',
   {

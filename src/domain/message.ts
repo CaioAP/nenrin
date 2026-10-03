@@ -11,6 +11,24 @@
 
 export type Tone = 'family' | 'close' | 'colleague';
 
+/**
+ * Every tone with its display label, in the order the chips show them.
+ *
+ * Here rather than in a screen because two screens now offer a tone — the message screen for
+ * one person, and the group screen for everyone in it — and a fourth tone must not be able to
+ * reach one and miss the other.
+ */
+export const TONE_CHOICES: readonly { value: Tone; label: string }[] = [
+  { value: 'family', label: 'Family' },
+  { value: 'close', label: 'Close' },
+  { value: 'colleague', label: 'Colleague' },
+];
+
+/** For values read back from a TEXT column, which could hold anything. */
+export function isTone(value: unknown): value is Tone {
+  return TONE_CHOICES.some((choice) => choice.value === value);
+}
+
 export type Template = {
   id: string;
   tone: Tone;
